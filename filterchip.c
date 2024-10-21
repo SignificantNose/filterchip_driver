@@ -11,7 +11,7 @@ static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
 
 // for now, I only define my soundcard in the ID table
 static struct pci_device_id snd_filterchip_idtable[] = {
-    { FCHIP_VENDOR_ID, FCHIP_DEVICE_ID },
+    { FCHIP_VENDOR_ID, FCHIP_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0, },
     { 0,}
 };
 
@@ -126,6 +126,7 @@ static int snd_filterchip_probe(
     struct filterchip* chip;
     int err;
 
+    printk(KERN_INFO "filterchip: probe called on device %x:%x\n", pci_id->vendor, pci_id->device);
     // if there's going to be one card, I think it's redundant? 
     // and the whole probe will be called only once?
     // but for now, leave it this way.
