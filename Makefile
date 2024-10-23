@@ -1,5 +1,5 @@
-obj-m += filterchip_drv.o
-filterchip_drv-y := filterchip_pcm.o filterchip.o
+obj-m += filterchip.o
+filterchip-y := fchip_pcm.o fchip.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
@@ -9,8 +9,8 @@ clean:
 bind_intel:
 	echo 0000:00:1f.3 | sudo tee /sys/bus/pci/drivers/snd_hda_intel/bind
 bind_fchip:
-	echo 0000:00:1f.3 | sudo tee /sys/bus/pci/drivers/filterchip_drv/bind
+	echo 0000:00:1f.3 | sudo tee /sys/bus/pci/drivers/filterchip/bind
 unbind_intel:
 	echo 0000:00:1f.3 | sudo tee /sys/bus/pci/drivers/snd_hda_intel/unbind
 unbind_fchip:
-	echo 0000:00:1f.3 | sudo tee /sys/bus/pci/drivers/filterchip_drv/unbind
+	echo 0000:00:1f.3 | sudo tee /sys/bus/pci/drivers/filterchip/unbind

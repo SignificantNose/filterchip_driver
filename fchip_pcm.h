@@ -1,5 +1,5 @@
 #pragma once
-#include "filterchip.h"
+#include "fchip.h"
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 

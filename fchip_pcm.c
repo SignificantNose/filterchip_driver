@@ -1,4 +1,4 @@
-#include "filterchip_pcm.h"
+#include "fchip_pcm.h"
 
 static struct snd_pcm_hardware snd_filterchip_playback_hw = {
     .info = (SNDRV_PCM_INFO_MMAP |

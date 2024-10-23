@@ -1,5 +1,5 @@
-#include "filterchip.h"
-#include "filterchip_pcm.h"
+#include "fchip.h"
+#include "fchip_pcm.h"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char* id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
