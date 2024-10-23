@@ -23,6 +23,7 @@ static struct pci_device_id snd_filterchip_idtable[] = {
 
 // interrupt handler 
 static irqreturn_t snd_filterchip_interrupt(int irq, void* dev_id){
+    printk(KERN_DEBUG "fchip: Interrupt handler called\n");
     struct filterchip* chip = dev_id;
     // todo
     return IRQ_HANDLED;
@@ -31,6 +32,8 @@ static irqreturn_t snd_filterchip_interrupt(int irq, void* dev_id){
 // CHIP dtor
 static int snd_filterchip_free(struct filterchip* chip)
 {
+    printk(KERN_DEBUG "fchip: Chip free called\n");
+
     if(chip->irq >= 0){
         free_irq(chip->irq, chip);
     }
@@ -44,6 +47,7 @@ static int snd_filterchip_free(struct filterchip* chip)
 // COMPONENT dtor
 static int snd_filterchip_dev_free(struct snd_device* device)
 {
+    printk(KERN_DEBUG "fchip: Device free called\n");
     return snd_filterchip_free(device->device_data);
 }
 
@@ -54,6 +58,7 @@ static int snd_filterchip_create(
     struct filterchip** rchip
 )
 {
+    printk(KERN_DEBUG "fchip: Chip create called\n");
     static struct snd_device_ops ops = {
         .dev_free = snd_filterchip_dev_free,
     };
@@ -125,12 +130,12 @@ static int snd_filterchip_probe(
     const struct pci_device_id* pci_id
 )
 {
+    printk(KERN_DEBUG "fchip: probe called on device %x:%x\n", pci_id->vendor, pci_id->device);
     static int dev;
     struct snd_card* card;
     struct filterchip* chip;
     int err;
 
-    printk(KERN_INFO "filterchip: probe called on device %x:%x\n", pci_id->vendor, pci_id->device);
     // if there's going to be one card, I think it's redundant? 
     // and the whole probe will be called only once?
     // but for now, leave it this way.
@@ -183,6 +188,7 @@ static int snd_filterchip_probe(
 
 // CHIP dtor
 static void snd_filterchip_remove(struct pci_dev* pci){
+    printk(KERN_DEBUG "fchip: Chip remove called\n");
     snd_card_free(pci_get_drvdata(pci));
     pci_set_drvdata(pci, NULL);
 }
@@ -198,12 +204,12 @@ static struct pci_driver driver = {
 };
 
 static int __init alsa_card_filterchip_init(void){
-    printk(KERN_INFO "filterchip: im here!\n");
+    printk(KERN_DEBUG "fchip: init called\n");
     return pci_register_driver(&driver);
 }
 
 static void __exit alsa_card_filterchip_exit(void){
-    printk(KERN_INFO "filterchip: im outta here!\n");
+    printk(KERN_DEBUG "fchip: exit called\n");
     pci_unregister_driver(&driver);
 }
 
@@ -244,6 +250,7 @@ static struct snd_pcm_hardware snd_filterchip_playback_hw = {
 
 static int snd_filterchip_playback_open(struct snd_pcm_substream* substream)
 {
+    printk(KERN_DEBUG "fchip: Playback open called\n");
     struct snd_pcm_runtime* runtime = substream->runtime;
     runtime->hw = snd_filterchip_playback_hw;
     
@@ -252,28 +259,34 @@ static int snd_filterchip_playback_open(struct snd_pcm_substream* substream)
 
 static int snd_filterchip_playback_close(struct snd_pcm_substream* substream)
 {
+    printk(KERN_DEBUG "fchip: Playback close called\n");
     return 0;
 }
 
 static int snd_filterchip_pcm_hw_params(struct snd_pcm_substream* substream, struct snd_pcm_hw_params* hw_params)
 {
+    printk(KERN_DEBUG "fchip: PCM HW params called\n");
     return snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(hw_params));
 }
 
 static int snd_filterchip_pcm_hw_free(struct snd_pcm_substream* substream)
 {
+    printk(KERN_DEBUG "fchip: PCM HW free called\n");
     return snd_pcm_lib_free_pages(substream);
 }
 
 static int snd_filterchip_pcm_prepare(struct snd_pcm_substream* substream){
+    printk(KERN_DEBUG "fchip: PCM prepare called\n");
     return 0;
 }
 
 static int snd_filterchip_pcm_trigger(struct snd_pcm_substream* substream, int cmd){
+    printk(KERN_DEBUG "fchip: PCM trigger called\n");
     return 0;
 }
 
 static snd_pcm_uframes_t snd_filterchip_pcm_pointer(struct snd_pcm_substream* substream){
+    printk(KERN_DEBUG "fchip: PCM pointer called\n");
     return 0;
 }
 
@@ -292,6 +305,7 @@ static struct snd_pcm_ops snd_filterchip_pcm_ops = {
 
 static int snd_filterchip_new_pcm(struct filterchip* chip)
 {
+    printk(KERN_DEBUG "fchip: New PCM called\n");
     struct snd_pcm* pcm;
     int err;   
     
