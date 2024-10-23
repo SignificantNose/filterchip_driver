@@ -1,9 +1,5 @@
-#include <linux/init.h>
-#include <linux/pci.h>
-#include <linux/slab.h>
-#include <sound/core.h>
-#include <sound/initval.h>
 #include "filterchip.h"
+#include "filterchip_pcm.h"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char* id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
@@ -150,6 +146,11 @@ static int snd_filterchip_probe(
         return err;
     }
 
+    err = snd_filterchip_new_pcm(chip);
+    if(err<0){
+        snd_card_free(card);
+        return err;
+    }
 
     strcpy(card->driver, FCHIP_DRIVER_NAME);
     strcpy(card->shortname, FCHIP_DRIVER_SHORTNAME);

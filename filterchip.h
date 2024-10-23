@@ -1,4 +1,10 @@
 #pragma once
+#include <linux/init.h>
+#include <linux/pci.h>
+#include <linux/slab.h>
+#include <sound/core.h>
+#include <sound/initval.h>
+#include <sound/hda_codec.h>
 
 #define FCHIP_DRIVER_NAME "FChip"
 #define FCHIP_DRIVER_SHORTNAME "Filterchip"
@@ -9,10 +15,15 @@
 
 
 struct filterchip{
+    // PCI part
     struct snd_card* card;
     struct pci_dev* pci;
     
     // todo change to mmio?
     unsigned long port;
     int irq;
+
+
+    // PCM part
+    struct snd_pcm* pcm;
 };
