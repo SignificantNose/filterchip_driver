@@ -1,5 +1,4 @@
-obj-m += filterchip_drv.o
-filterchip_drv-y:= filterchip_pcm.o filterchip.o
+obj-m += filterchip.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
