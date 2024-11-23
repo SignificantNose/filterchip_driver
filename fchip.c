@@ -10,7 +10,7 @@ static struct pci_device_id snd_filterchip_idtable[] = {
     { FCHIP_VENDOR_ID, FCHIP_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0, },
     { 0,}
 };
-
+MODULE_DEVICE_TABLE(pci, snd_filterchip_idtable);
 
 
 // interrupt handler 
@@ -139,6 +139,7 @@ static int snd_filterchip_probe(
         return -ENOENT;
     }
 
+    // allocate memory for private data here
     err = snd_card_new(&pci->dev, index[dev], id[dev], THIS_MODULE, 0, &card);
     if(err<0){
         return err;
