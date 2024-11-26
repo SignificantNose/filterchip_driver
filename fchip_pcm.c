@@ -81,7 +81,7 @@ static struct snd_pcm_ops snd_filterchip_pcm_ops = {
     .pointer =      snd_filterchip_pcm_pointer
 };
 
-int snd_filterchip_new_pcm(struct filterchip* chip)
+int snd_filterchip_new_pcm(struct fchip* chip)
 {
     printk(KERN_DEBUG "fchip: New PCM called\n");
     struct snd_pcm* pcm;

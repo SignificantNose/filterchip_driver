@@ -1,123 +1,454 @@
 #include "fchip.h"
 #include "fchip_pcm.h"
+#include "fchip_codec.h"
+
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char* id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
 static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
 
-// interrupt handler 
-static irqreturn_t snd_filterchip_interrupt(int irq, void* dev_id){
-    printk(KERN_DEBUG "fchip: Interrupt handler called\n");
-    struct filterchip* chip = dev_id;
-    // todo
-    return IRQ_HANDLED;
-}
+// hda specifics
+static char *patch[SNDRV_CARDS];
+static int probe_only[SNDRV_CARDS];
+static int jackpoll_ms[SNDRV_CARDS];
+static char *model[SNDRV_CARDS];
+static int position_fix[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
+static int bdl_pos_adj[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
+static int single_cmd = -1;
 
-// CHIP dtor
-static int snd_filterchip_free(struct filterchip* chip)
-{
-    printk(KERN_DEBUG "fchip: Chip free called\n");
 
-    if(chip->irq >= 0){
-        free_irq(chip->irq, chip);
-    }
+// number of codec slots for each chipset: 0 = default slots (i.e. 4) 
+static const unsigned int azx_max_codecs[AZX_NUM_DRIVERS] = {
+	[AZX_DRIVER_NVIDIA] = 8,
+	[AZX_DRIVER_TERA] = 1,
+};
+static bool beep_mode[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] =
+					CONFIG_SND_HDA_INPUT_BEEP_MODE};
 
-    pci_release_regions(chip->pci);
-    pci_disable_device(chip->pci);
-    kfree(chip);
-    return 0;
-}
+static bool ctl_dev_id = IS_ENABLED(CONFIG_SND_HDA_CTL_DEV_ID) ? 1 : 0;
+
 
 // COMPONENT dtor
-static int snd_filterchip_dev_free(struct snd_device* device)
+static int fchip_dev_free(struct snd_device* device)
 {
-    printk(KERN_DEBUG "fchip: Device free called\n");
-    return snd_filterchip_free(device->device_data);
+    // printk(KERN_DEBUG "fchip: Device free called\n");
+    // return snd_filterchip_free(device->device_data);
+	return 0;
 }
 
+static int fchip_dev_disconnect(struct snd_device *device)
+{
+	return 0;
+}
+static void fchip_irq_pending_work(struct work_struct *work)
+{}
+
+static void assign_position_fix(struct fchip_azx *chip, int fix)
+{}
+static int check_position_fix(struct fchip_azx *chip, int fix)
+{
+	return 0;
+}
+static void fchip_check_snoop_available(struct fchip_azx *chip)
+{}
+static int default_bdl_pos_adj(struct fchip_azx *chip)
+{
+	return 0;
+}
+
+static bool fchip_snoop(struct fchip_azx *chip)
+{
+	return false;
+}
+
+static void fchip_check_probe_mask(struct fchip_azx *chip, int dev)
+{}
+
+static void fchip_free(struct fchip_azx *chip)
+{}
+
+
+static void fchip_check_msi(struct fchip_azx *chip)
+{}
+
+
+static void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *chip)
+{}
+
+static void fchip_set_default_power_save(struct fchip_azx *chip)
+{}
+
+static void fchip_add_card_list(struct fchip_azx *chip)
+{}
+
+static int fchip_register_vga_switcheroo(struct fchip_azx *chip)
+{
+	return 0;
+}
+
+static void fchip_init_vga_switcheroo(struct fchip_azx *chip)
+{}
+
+static bool fchip_check_hdmi_disabled(struct pci_dev *pci)
+{
+	return false;
+}
+
+static void fchip_remove(struct pci_dev *pci)
+{}
+
+static void fchip_shutdown(struct pci_dev *pci)
+{}
+
+
+static int fchip_first_init(struct fchip_azx *chip)
+{
+	return 0;
+}
+
+// hda bus initialization
+int fchip_bus_init(struct fchip_azx *chip, const char *model)
+{
+	return 0;
+}
+
+static void fchip_probe_work(struct work_struct *work)
+{}
+
+
+#define fchip_display_power(fchip_azx, enable) \
+	snd_hdac_display_power(azx_to_hda_bus(fchip_azx), HDA_CODEC_IDX_CONTROLLER, enable)
+
+#define fchip_has_pm_runtime(fchip_azx) \
+	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
+
+
+
+static int fchip_disable_msi_reset_irq(struct fchip_azx *chip)
+{
+	return 0;
+}
+
+static int fchip_position_check(struct fchip_azx *chip, struct azx_dev *azx_dev)
+{
+	return 0;
+}
+
+static const struct hda_controller_ops fchip_pci_hda_ops = {
+	.disable_msi_reset_irq = fchip_disable_msi_reset_irq,
+	.position_check = fchip_position_check,
+};
+
 // CHIP ctor
-static int snd_filterchip_create(
+static int fchip_create(
     struct snd_card* card,
     struct pci_dev* pci, 
-    struct filterchip** rchip
+	int dev,
+	int driver_caps,
+    struct fchip** rchip
 )
 {
     printk(KERN_DEBUG "fchip: Chip create called\n");
     static struct snd_device_ops ops = {
-        .dev_free = snd_filterchip_dev_free,
+		.dev_disconnect = fchip_dev_disconnect,
+        .dev_free = fchip_dev_free,
     };
-    struct filterchip* chip;
+	struct fchip_hda_intel* fchip_hda;
+	struct fchip_azx* fchip_azx;
+    struct fchip* fchip;
     int err;
-    int dma_bits;
 
     *rchip = NULL;
 
 
-    // initializing the pci entry
-    err = pci_enable_device(pci);
+    // Initializing the pci entry. Using pcim, so that we 
+	// do not have to disable the device ourselves
+    err = pcim_enable_device(pci);
     if(err<0){
         return err;
     }
-    // checking pci availability
-    dma_bits = FCHIP_DMA_MASK_BITS;
-    if(
-        dma_set_mask(&pci->dev, DMA_BIT_MASK(dma_bits))<0 ||
-        dma_set_coherent_mask(&pci->dev, DMA_BIT_MASK(dma_bits))<0)
-    {
-        printk(KERN_ERR "FChip: error setting %dbit DMA mask\n", dma_bits);
-        pci_disable_device(pci);
-        return -ENXIO;
-    }
 
-    chip = kzalloc(sizeof(*chip), GFP_KERNEL);
-    if(chip==NULL){
-        pci_disable_device(pci);
+	// using a managed version of kzalloc 
+	// (to not free the memory ourselves)
+	// first allocate memory for fchip instance, 
+	// then - for hda_intel instance
+    fchip = devm_kzalloc(&pci->dev, sizeof(*fchip), GFP_KERNEL);
+	if(fchip == NULL){
+        // pci_disable_device(pci);
+		return -ENOMEM;
+	}
+
+	fchip_hda = devm_kzalloc(&pci->dev, sizeof(*fchip_hda), GFP_KERNEL);
+    if(fchip_hda==NULL){
+        // pci_disable_device(pci);
         return -ENOMEM;
     }
 
-    chip->card = card;
-    chip->pci = pci;
-    chip->irq = -1;
+	fchip_azx = &fchip_hda->chip;
+	fchip->azx_chip = fchip_azx;
+	mutex_init(&fchip_azx->open_mutex);
+    fchip_azx->card = card;
+    fchip_azx->pci = pci;
+	fchip_azx->ops = &fchip_pci_hda_ops;
+	fchip_azx->driver_caps = driver_caps;
+	fchip_azx->driver_type = driver_caps & 0xff;
+	
+	fchip_check_msi(fchip_azx);
+	fchip_azx->dev_index = dev;
 
-    // resource allocation
-    // 1. i/o port
-    err = pci_request_regions(pci, FCHIP_DRIVER_NAME);
-    if(err<0){
-        kfree(chip);
-        pci_disable_device(pci);
-        return err;
-    }
-    chip->port = pci_resource_start(pci, 0);
+	if(jackpoll_ms[dev]>=50 && jackpoll_ms[dev]<=60000){
+		fchip_azx->jackpoll_interval = msecs_to_jiffies(jackpoll_ms[dev]);
+	}
+
+
+
+	INIT_LIST_HEAD(&fchip_azx->pcm_list);
+	INIT_WORK(&fchip_hda->irq_pending_work, fchip_irq_pending_work);
+	INIT_LIST_HEAD(&fchip_hda->list);
+	fchip_init_vga_switcheroo(fchip_azx);
+	init_completion(&fchip_hda->probe_wait);
+
+	assign_position_fix(fchip_azx, check_position_fix(fchip_azx, position_fix[dev]));
+
+	if (single_cmd < 0) 
+	{
+		// allow on errors
+		fchip_azx->fallback_to_single_cmd = 1; 	
+	}
+	else
+	{
+		fchip_azx->single_cmd = single_cmd;
+	} 
+
+	fchip_check_snoop_available(fchip_azx);
+
+	if (bdl_pos_adj[dev] < 0)
+	{
+		fchip_azx->bdl_pos_adj = default_bdl_pos_adj(fchip_azx);
+	}
+	else
+	{
+		fchip_azx->bdl_pos_adj = bdl_pos_adj[dev];
+	}
+
+	err = fchip_bus_init(fchip_azx, model[dev]);
+	if (err < 0)
+	{
+		return err;
+	}
+
+	/* use the non-cached pages in non-snoop mode */
+	if (!fchip_snoop(fchip_azx))
+	{
+		azx_to_hda_bus(fchip_azx)->dma_type = SNDRV_DMA_TYPE_DEV_WC;
+	}
+
+	if (fchip_azx->driver_type == AZX_DRIVER_NVIDIA) 
+	{
+		printk(KERN_DEBUG "fchip: Enable delay in RIRB handling\n");
+		fchip_azx->bus.core.needs_damn_long_delay = 1;
+	}
+
+	fchip_check_probe_mask(fchip_azx, dev);
+
+	err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, fchip_azx, &ops);
+	if (err < 0) {
+		printk(KERN_ERR "fchip: Error creating device!\n", pci->dev.id);
+		
+		fchip_free(fchip_azx);
+		return err;
+	}
+
+	/* continue probing in work context as may trigger request module */
+	INIT_DELAYED_WORK(&fchip_hda->probe_work, fchip_probe_work);
+
+	*rchip = fchip;
+
+	return 0;
+    // // resource allocation
+    // // 1. i/o port
+    // err = pci_request_regions(pci, FCHIP_DRIVER_NAME);
+    // if(err<0){
+    //     kfree(chip);
+    //     pci_disable_device(pci);
+    //     return err;
+    // }
+    // chip->port = pci_resource_start(pci, 0);
     
-    // 2. interrupt source
-    if(request_irq(pci->irq, snd_filterchip_interrupt, IRQF_SHARED, KBUILD_MODNAME, chip)){
-        printk(KERN_ERR "FCHIP: cannot grab irq %d\n", pci->irq);
-        snd_filterchip_free(chip);
-        return -EBUSY;
-    }
-    chip->irq = pci->irq;
+    // // 2. interrupt source
+    // if(request_irq(pci->irq, snd_filterchip_interrupt, IRQF_SHARED, KBUILD_MODNAME, chip)){
+    //     printk(KERN_ERR "FCHIP: cannot grab irq %d\n", pci->irq);
+    //     snd_filterchip_free(chip);
+    //     return -EBUSY;
+    // }
+    // chip->irq = pci->irq;
 
-    err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops);
-    if(err<0){
-        snd_filterchip_free(chip);
-        return err;
-    }
+    // err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops);
+    // if(err<0){
+    //     snd_filterchip_free(chip);
+    //     return err;
+    // }
 
-    *rchip = chip;
-    return 0;
+    // *rchip = chip;
+    // return 0;
+
+
+    // fchip_azx->irq = -1;
+	//
+    // int dma_bits;
+	// // checking pci availability
+    // dma_bits = FCHIP_DMA_MASK_BITS;
+    // if(
+    //     dma_set_mask(&pci->dev, DMA_BIT_MASK(dma_bits))<0 ||
+    //     dma_set_coherent_mask(&pci->dev, DMA_BIT_MASK(dma_bits))<0)
+    // {
+    //     printk(KERN_ERR "FChip: error setting %dbit DMA mask\n", dma_bits);
+    //     pci_disable_device(pci);
+    //     return -ENXIO;
+    // }
 }
 
+static int fchip_probe_continue(struct fchip_azx *chip);
+
+#ifdef CONFIG_SND_HDA_PATCH_LOADER
+static void fchip_firmware_cb(const struct firmware *fw, void *context)
+{
+	struct snd_card *card = context;
+	struct fchip_azx *fchip_azx = ((struct fchip*)(card->private_data))->azx_chip;
+
+	if (fw){
+		fchip_azx->fw = fw;
+	}
+	else
+		printk(KERN_ERR "fchip: Cannot load firmware, continue without patching\n");
+	if (!fchip_azx->disabled) {
+		//continue probing
+		fchip_probe_continue(fchip_azx);
+	}
+}
+#endif // CONFIG_SND_HDA_PATCH_LOADER
+
+
+static int fchip_probe_continue(struct fchip_azx *fchip_azx)
+{
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+	struct pci_dev *pci = fchip_azx->pci;
+	int dev = fchip_azx->dev_index;
+	int err;
+
+	if (fchip_azx->disabled || hda->init_failed)
+	{
+		return -EIO;
+	}
+	if (hda->probe_retry)
+	{
+		goto probe_retry;
+	}
+
+	to_hda_bus(bus)->bus_probing = 1;
+	hda->probe_continued = 1;
+
+	/* Request display power well for the HDA controller or codec. For
+	 * Haswell/Broadwell, both the display HDA controller and codec need
+	 * this power. For other platforms, like Baytrail/Braswell, only the
+	 * display codec needs the power and it can be released after probe.
+	 */
+	fchip_display_power(fchip_azx, true);
+
+	err = fchip_first_init(fchip_azx);
+	if (err < 0){
+		goto out_free;
+	}
+
+#ifdef CONFIG_SND_HDA_INPUT_BEEP
+	fchip_azx->beep_mode = beep_mode[dev];
+#endif
+
+	fchip_azx->ctl_dev_id = ctl_dev_id;
+
+	// create codec instances
+	if (bus->codec_mask) {
+		err = fchip_probe_codecs(fchip_azx, azx_max_codecs[fchip_azx->driver_type]);
+		if (err < 0){
+			goto out_free;
+		}
+	}
+
+#ifdef CONFIG_SND_HDA_PATCH_LOADER
+	if (fchip_azx->fw) {
+		err = snd_hda_load_patch(&fchip_azx->bus, fchip_azx->fw->size,
+					 fchip_azx->fw->data);
+		if (err < 0){
+			goto out_free;
+		}
+	}
+#endif
+
+ probe_retry:
+	if (bus->codec_mask && !(probe_only[dev] & 1)) {
+		err = fchip_codec_configure(fchip_azx);
+		if (err) {
+			if ((fchip_azx->driver_caps & AZX_DCAPS_RETRY_PROBE) &&
+			    ++hda->probe_retry < 60) {
+				schedule_delayed_work(&hda->probe_work,
+						      msecs_to_jiffies(1000));
+				return 0; /* keep things up */
+			}
+			printk(KERN_ERR "fchip: Cannot probe codecs, giving up\n");
+			goto out_free;
+		}
+	}
+
+	err = snd_card_register(fchip_azx->card);
+	if (err < 0){
+		goto out_free;
+	}
+
+	fchip_setup_vga_switcheroo_runtime_pm(fchip_azx);
+
+	fchip_azx->running = 1;
+	fchip_add_card_list(fchip_azx);
+
+	fchip_set_default_power_save(fchip_azx);
+
+	if (fchip_has_pm_runtime(fchip_azx)) {
+		pm_runtime_use_autosuspend(&pci->dev);
+		pm_runtime_allow(&pci->dev);
+		pm_runtime_put_autosuspend(&pci->dev);
+	}
+
+out_free:
+	if (err < 0) {
+		pci_set_drvdata(pci, NULL);
+		snd_card_free(fchip_azx->card);
+		return err;
+	}
+
+	if (!hda->need_i915_power)
+	{
+		fchip_display_power(fchip_azx, false);
+	}
+	complete_all(&hda->probe_wait);
+	to_hda_bus(bus)->bus_probing = 0;
+	hda->probe_retry = 0;
+	return 0;
+}
 
 // DRIVER ctor
-static int snd_filterchip_probe(
+static int fchip_probe
+(
     struct pci_dev* pci,
     const struct pci_device_id* pci_id
 )
 {
-    printk(KERN_DEBUG "fchip: probe called on device %x:%x\n", pci_id->vendor, pci_id->device);
+    printk(KERN_DEBUG "fchip: Probe called on device %x:%x\n", pci_id->vendor, pci_id->device);
     static int dev;
     struct snd_card* card;
-    struct filterchip* chip;
+	struct fchip_hda_intel *hda;
+    struct fchip* fchip;
+	struct fchip_azx* fchip_azx;
+	bool schedule_probe;
     int err;
 
     // if there's going to be one card, I think it's redundant? 
@@ -134,49 +465,140 @@ static int snd_filterchip_probe(
     // allocate memory for private data here
     err = snd_card_new(&pci->dev, index[dev], id[dev], THIS_MODULE, 0, &card);
     if(err<0){
+		printk(KERN_ERR "fchip: Error creating card\n");
         return err;
     }
 
 
-    err = snd_filterchip_create(card, pci, &chip);
+
+// driver_data will contain the data declared in the PCI ID table. 
+// The capabilities are defined there.
+    err = fchip_create(card, pci, dev, pci_id->driver_data, &fchip);
     if(err<0){
+		pci_set_drvdata(pci, NULL);
         snd_card_free(card);
         return err;
     }
+	card->private_data = fchip;
+	fchip_azx = fchip->azx_chip;
+	hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
 
-    err = snd_filterchip_new_pcm(chip);
-    if(err<0){
-        snd_card_free(card);
-        return err;
-    }
+	pci_set_drvdata(pci, card);
 
-    strcpy(card->driver, FCHIP_DRIVER_NAME);
-    strcpy(card->shortname, FCHIP_DRIVER_SHORTNAME);
-    sprintf(card->longname, "%s at 0x%lx irq %i", card->shortname, chip->port, chip->irq);
+#ifdef CONFIG_SND_HDA_I915
+	/* bind with i915 if needed */
+	if (fchip_azx->driver_caps & AZX_DCAPS_I915_COMPONENT) {
+		err = snd_hdac_i915_init(azx_to_hda_bus(fchip_azx));
+		if (err < 0) {
+			if (err == -EPROBE_DEFER){
+				pci_set_drvdata(pci, NULL);
+        		snd_card_free(card);
+        		return err;
+			}
 
-    // todo later (PCM goes here?)
+			/* if the controller is bound only with HDMI/DP
+			 * (for HSW and BDW), we need to abort the probe;
+			 * for other chips, still continue probing as other
+			 * codecs can be on the same link.
+			 */
+			if (HDA_CONTROLLER_IN_GPU(pci)) {
+				printk(KERN_ERR "fchip: HSW/BDW HD-audio HDMI/DP requires binding with gfx driver\n");
 
-    err = snd_card_register(card);
-    if(err<0){
-        snd_card_free(card);
-        return err;
-    }
+				pci_set_drvdata(pci, NULL);
+        		snd_card_free(card);
+        		return err;
+			} 
+			else {
+				/* don't bother any longer */
+				fchip_azx->driver_caps &= ~AZX_DCAPS_I915_COMPONENT;
+			}
+		}
 
-    // we do it, so that later we can free the chip, 
-    // as only pci_dev struct is passed to the dtor.
-    // that way, we're able to free the card by acquiring
-    // it from the drvdata of the pci_dev struct
-    pci_set_drvdata(pci, card);
-    dev++;
-    return 0;
+		/* HSW/BDW controllers need this power */
+		if (HDA_CONTROLLER_IN_GPU(pci)){
+			hda->need_i915_power = true;
+		}
+	}
+#else
+	if (HDA_CONTROLLER_IN_GPU(pci))
+	{
+		printk(KERN_ERR "fchip: Haswell/Broadwell HDMI/DP must build in CONFIG_SND_HDA_I915\n");
+	}
+#endif // CONFIG_SND_HDA_I915
+
+	// not sure if the vga is required here, but:
+	err = fchip_register_vga_switcheroo(fchip_azx);
+	if (err < 0) {
+		printk(KERN_ERR "fchip: Error registering vga_switcheroo client\n");
+	
+		pci_set_drvdata(pci, NULL);
+		snd_card_free(card);
+		return err;
+	}
+
+	if (fchip_check_hdmi_disabled(pci)) {
+		printk(KERN_ERR "fchip: VGA controller is disabled\n");
+		printk(KERN_ERR "fchip: Delaying initialization\n");
+		fchip_azx->disabled = true;
+	}
+
+	schedule_probe = !fchip_azx->disabled;
+
+#ifdef CONFIG_SND_HDA_PATCH_LOADER
+	if (patch[dev] && *patch[dev]) {
+		printk(KERN_INFO "fchip: Applying patch firmware '%s'\n", patch[dev]);
+		err = request_firmware_nowait(
+			THIS_MODULE, true, patch[dev], &pci->dev, GFP_KERNEL, card,
+			fchip_firmware_cb
+		);
+		if (err < 0){
+			pci_set_drvdata(pci, NULL);
+			snd_card_free(card);
+			return err;
+		}
+		schedule_probe = false; /* continued in azx_firmware_cb() */
+	}
+#endif // CONFIG_SND_HDA_PATCH_LOADER
+
+	if (schedule_probe)
+	{
+		schedule_delayed_work(&hda->probe_work, 0);
+	}
+
+	if (fchip_azx->disabled){
+		complete_all(&hda->probe_wait);
+	}
+	return 0;
+
+
+	
+    // err = snd_filterchip_new_pcm(chip);
+    // if(err<0){
+    //     snd_card_free(card);
+    //     return err;
+    // }
+
+    // strcpy(card->driver, FCHIP_DRIVER_NAME);
+    // strcpy(card->shortname, FCHIP_DRIVER_SHORTNAME);
+    // sprintf(card->longname, "%s at 0x%lx irq %i", card->shortname, chip->port, chip->irq);
+
+    // // todo later (PCM goes here?)
+
+    // err = snd_card_register(card);
+    // if(err<0){
+    //     snd_card_free(card);
+    //     return err;
+    // }
+
+    // // we do it, so that later we can free the chip, 
+    // // as only pci_dev struct is passed to the dtor.
+    // // that way, we're able to free the card by acquiring
+    // // it from the drvdata of the pci_dev struct
+    // pci_set_drvdata(pci, card);
+    // dev++;
+    // return 0;
 }
 
-// CHIP dtor
-static void snd_filterchip_remove(struct pci_dev* pci){
-    printk(KERN_DEBUG "fchip: Chip remove called\n");
-    snd_card_free(pci_get_drvdata(pci));
-    pci_set_drvdata(pci, NULL);
-}
 
 
 
@@ -529,8 +951,10 @@ MODULE_DEVICE_TABLE(pci, fchip_idtable);
 static struct pci_driver driver = {
     .name = KBUILD_MODNAME,
     .id_table = fchip_idtable,
-    .probe = snd_filterchip_probe,
-    .remove = snd_filterchip_remove,
+    .probe = fchip_probe,
+    .remove = fchip_remove,
+	.shutdown = fchip_shutdown,
+	.driver = { .pm = NULL }
 };
 
 static int __init alsa_card_filterchip_init(void){
@@ -549,3 +973,32 @@ module_exit(alsa_card_filterchip_exit)
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Significant Nose");
 MODULE_DESCRIPTION("ALSA compliant audio driver with a filtering function");
+
+// // interrupt handler 
+// static irqreturn_t snd_filterchip_interrupt(int irq, void* dev_id){
+//     printk(KERN_DEBUG "fchip: Interrupt handler called\n");
+//     struct fchip* chip = dev_id;
+//     // todo
+//     return IRQ_HANDLED;
+// }
+
+// // CHIP dtor
+// static int snd_filterchip_free(struct fchip* chip)
+// {
+//     printk(KERN_DEBUG "fchip: Chip free called\n");
+
+//     if(chip->irq >= 0){
+//         free_irq(chip->irq, chip);
+//     }
+
+//     pci_release_regions(chip->pci);
+//     pci_disable_device(chip->pci);
+//     kfree(chip);
+//     return 0;
+// }
+// // CHIP dtor
+// static void snd_filterchip_remove(struct pci_dev* pci){
+//     printk(KERN_DEBUG "fchip: Chip remove called\n");
+//     snd_card_free(pci_get_drvdata(pci));
+//     pci_set_drvdata(pci, NULL);
+// }

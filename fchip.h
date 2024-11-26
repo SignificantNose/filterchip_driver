@@ -1,11 +1,14 @@
 #pragma once
+
 #include <linux/init.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
+#include <linux/firmware.h>
+#include <linux/workqueue.h>
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/hda_codec.h>
-
+#include <sound/hda_i915.h>
 
 #define FCHIP_DRIVER_NAME "FChip"
 #define FCHIP_DRIVER_SHORTNAME "Filterchip"
@@ -156,7 +159,113 @@ enum {
 
 #pragma endregion
 
-struct filterchip{
+
+struct azx_dev {
+	struct hdac_stream core;
+
+	unsigned int irq_pending:1;
+	/*
+	 * For VIA:
+	 *  A flag to ensure DMA position is 0
+	 *  when link position is not greater than FIFO size
+	 */
+	unsigned int insufficient:1;
+};
+
+typedef unsigned int (*azx_get_pos_callback_t)(struct fchip_azx *, struct azx_dev *);
+typedef int (*azx_get_delay_callback_t)(struct fchip_azx *, struct azx_dev *, unsigned int pos);
+
+struct fchip_azx {
+	struct hda_bus bus;
+
+	struct snd_card *card;
+	struct pci_dev *pci;
+	int dev_index;
+
+	/* chip type specific */
+	int driver_type;
+	unsigned int driver_caps;
+	int playback_streams;
+	int playback_index_offset;
+	int capture_streams;
+	int capture_index_offset;
+	int num_streams;
+	int jackpoll_interval; /* jack poll interval in jiffies */
+
+	/* Register interaction. */
+	const struct hda_controller_ops *ops;
+
+	/* position adjustment callbacks */
+	azx_get_pos_callback_t get_position[2];
+	azx_get_delay_callback_t get_delay[2];
+
+	/* locks */
+	struct mutex open_mutex; /* Prevents concurrent open/close operations */
+
+	/* PCM */
+	struct list_head pcm_list; /* azx_pcm list */
+
+	/* HD codec */
+	int  codec_probe_mask; /* copied from probe_mask option */
+	unsigned int beep_mode;
+	bool ctl_dev_id;
+
+#ifdef CONFIG_SND_HDA_PATCH_LOADER
+	const struct firmware *fw;
+#endif
+
+	/* flags */
+	int bdl_pos_adj;
+	unsigned int running:1;
+	unsigned int fallback_to_single_cmd:1;
+	unsigned int single_cmd:1;
+	unsigned int msi:1;
+	unsigned int probing:1; /* codec probing phase */
+	unsigned int snoop:1;
+	unsigned int uc_buffer:1; /* non-cached pages for stream buffers */
+	unsigned int align_buffer_size:1;
+	unsigned int disabled:1; /* disabled by vga_switcheroo */
+	unsigned int pm_prepared:1;
+
+	/* GTS present */
+	unsigned int gts_present:1;
+
+#ifdef CONFIG_SND_HDA_DSP_LOADER
+	struct azx_dev saved_azx_dev;
+#endif
+};
+
+// same as struct hda_intel
+struct fchip_hda_intel {
+	struct fchip_azx chip;
+
+	/* for pending irqs */
+	struct work_struct irq_pending_work;
+
+	/* sync probing */
+	struct completion probe_wait;
+	struct delayed_work probe_work;
+
+	/* card list (for power_save trigger) */
+	struct list_head list;
+
+	/* extra flags */
+	unsigned int irq_pending_warned:1;
+	unsigned int probe_continued:1;
+	unsigned int runtime_pm_disabled:1;
+
+	/* vga_switcheroo setup */
+	unsigned int use_vga_switcheroo:1;
+	unsigned int vga_switcheroo_registered:1;
+	unsigned int init_failed:1; /* delayed init failed */
+	unsigned int freed:1; /* resources already released */
+
+	bool need_i915_power:1; /* the hda controller needs i915 power */
+
+	int probe_retry;	/* being probe-retry */
+};
+
+struct fchip{
     // PCI part
     struct snd_card* card;
     struct pci_dev* pci;
@@ -168,4 +277,18 @@ struct filterchip{
 
     // PCM part
     struct snd_pcm* pcm;
+
+	struct fchip_azx* azx_chip;
 };
+
+// Functions to read/write to hda registers
+struct hda_controller_ops {
+	// Disable msi if supported, PCI only
+	int (*disable_msi_reset_irq)(struct fchip_azx *);
+	// Check if current position is acceptable
+	int (*position_check)(struct fchip_azx *chip, struct azx_dev *azx_dev);
+	// enable/disable the link power
+	int (*link_power)(struct fchip_azx *chip, bool enable);
+};
+
+#define azx_to_hda_bus(chip)	(&(chip)->bus.core)
