@@ -31,6 +31,9 @@
 #define ATIHDMI_NUM_PLAYBACK	8
 
 
+#define AZX_FORCE_CODEC_MASK	0x100
+
+
 #pragma region DEVICE_IDS_AND_CAPABILITIES
 
 enum {

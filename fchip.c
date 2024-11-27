@@ -16,6 +16,7 @@ static int jackpoll_ms[SNDRV_CARDS];
 static char *model[SNDRV_CARDS];
 static int position_fix[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
 static int bdl_pos_adj[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
+static int probe_mask[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
 static int single_cmd = -1;
 static int align_buffer_size = -1;
 static int enable_msi = -1;
@@ -127,8 +128,48 @@ static int default_bdl_pos_adj(struct fchip_azx *chip)
 	}
 }
 
-static void fchip_check_probe_mask(struct fchip_azx *chip, int dev)
-{}
+static const struct snd_pci_quirk probe_mask_list[] = {
+	/* Thinkpad often breaks the controller communication when accessing
+	 * to the non-working (or non-existing) modem codec slot.
+	 */
+	SND_PCI_QUIRK(0x1014, 0x05b7, "Thinkpad Z60", 0x01),
+	SND_PCI_QUIRK(0x17aa, 0x2010, "Thinkpad X/T/R60", 0x01),
+	SND_PCI_QUIRK(0x17aa, 0x20ac, "Thinkpad X/T/R61", 0x01),
+	/* broken BIOS */
+	SND_PCI_QUIRK(0x1028, 0x20ac, "Dell Studio Desktop", 0x01),
+	/* including bogus ALC268 in slot#2 that conflicts with ALC888 */
+	SND_PCI_QUIRK(0x17c0, 0x4085, "Medion MD96630", 0x01),
+	/* forced codec slots */
+	SND_PCI_QUIRK(0x1043, 0x1262, "ASUS W5Fm", 0x103),
+	SND_PCI_QUIRK(0x1046, 0x1262, "ASUS W5F", 0x103),
+	SND_PCI_QUIRK(0x1558, 0x0351, "Schenker Dock 15", 0x105),
+	/* WinFast VP200 H (Teradici) user reported broken communication */
+	SND_PCI_QUIRK(0x3a21, 0x040d, "WinFast VP200 H", 0x101),
+	{}
+};
+
+static void fchip_check_probe_mask(struct fchip_azx *fchip_azx, int dev)
+{
+	const struct snd_pci_quirk *q;
+
+	fchip_azx->codec_probe_mask = probe_mask[dev];
+	if (fchip_azx->codec_probe_mask == -1) {
+		q = snd_pci_quirk_lookup(fchip_azx->pci, probe_mask_list);
+		if (q) {
+			printk(KERN_INFO "fchip: probe_mask set to 0x%x for device %04x:%04x\n",
+				 q->value, q->subvendor, q->subdevice);
+			fchip_azx->codec_probe_mask = q->value;
+		}
+	}
+
+	/* check forced option */
+	if (fchip_azx->codec_probe_mask != -1 &&
+	    (fchip_azx->codec_probe_mask & AZX_FORCE_CODEC_MASK)) {
+		azx_to_hda_bus(fchip_azx)->codec_mask = fchip_azx->codec_probe_mask & 0xff;
+		printk(KERN_INFO "fchip: codec_mask forced to 0x%x\n",
+			 (int)azx_to_hda_bus(fchip_azx)->codec_mask);
+	}
+}
 
 static void fchip_free(struct fchip_azx *chip)
 {}
