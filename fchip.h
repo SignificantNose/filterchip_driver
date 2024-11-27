@@ -8,11 +8,26 @@
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/hda_codec.h>
+#include <sound/hda_register.h>
 #include <sound/hda_i915.h>
 
 #define FCHIP_DRIVER_NAME "FChip"
 #define FCHIP_DRIVER_SHORTNAME "Filterchip"
 #define FCHIP_DMA_MASK_BITS 32
+
+
+/* max number of SDs */
+/* ICH, ATI and VIA have 4 playback and 4 capture */
+#define ICH6_NUM_CAPTURE	4
+#define ICH6_NUM_PLAYBACK	4
+
+/* ULI has 6 playback and 5 capture */
+#define ULI_NUM_CAPTURE		5
+#define ULI_NUM_PLAYBACK	6
+
+/* ATI HDMI may have up to 8 playbacks and 0 capture */
+#define ATIHDMI_NUM_CAPTURE	0
+#define ATIHDMI_NUM_PLAYBACK	8
 
 
 #pragma region DEVICE_IDS_AND_CAPABILITIES
@@ -291,4 +306,23 @@ struct hda_controller_ops {
 	int (*link_power)(struct fchip_azx *chip, bool enable);
 };
 
-#define azx_to_hda_bus(chip)	(&(chip)->bus.core)
+#define azx_to_hda_bus(fchip_azx)	(&(fchip_azx)->bus.core)
+#define azx_dev_to_hdac_stream(fchip_azx) (&(fchip_azx)->core)
+
+#define fchip_writereg_l(fchip_azx, reg, value) \
+	snd_hdac_chip_writel(azx_to_hda_bus(fchip_azx), reg, value)
+#define fchip_readreg_l(fchip_azx, reg) \
+	snd_hdac_chip_readl(azx_to_hda_bus(fchip_azx), reg)
+#define fchip_writereg_w(fchip_azx, reg, value) \
+	snd_hdac_chip_writew(azx_to_hda_bus(fchip_azx), reg, value)
+#define fchip_readreg_w(fchip_azx, reg) \
+	snd_hdac_chip_readw(azx_to_hda_bus(fchip_azx), reg)
+#define fchip_writereg_b(fchip_azx, reg, value) \
+	snd_hdac_chip_writeb(azx_to_hda_bus(fchip_azx), reg, value)
+#define fchip_readreg_b(fchip_azx, reg) \
+	snd_hdac_chip_readb(azx_to_hda_bus(fchip_azx), reg)
+
+#define fchip_alloc_stream_pages(fchip_azx) \
+	snd_hdac_bus_alloc_stream_pages(azx_to_hda_bus(fchip_azx))
+#define fchip_free_stream_pages(fchip_azx) \
+	snd_hdac_bus_free_stream_pages(azx_to_hda_bus(fchip_azx))

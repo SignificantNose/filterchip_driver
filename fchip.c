@@ -1,7 +1,8 @@
 #include "fchip.h"
 #include "fchip_pcm.h"
 #include "fchip_codec.h"
-
+#include "fchip_vga.h"
+#include "fchip_posfix.h"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char* id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
@@ -15,6 +16,9 @@ static char *model[SNDRV_CARDS];
 static int position_fix[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
 static int bdl_pos_adj[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
 static int single_cmd = -1;
+static int align_buffer_size = -1;
+static int enable_msi = -1;
+
 
 
 // number of codec slots for each chipset: 0 = default slots (i.e. 4) 
@@ -43,12 +47,6 @@ static int fchip_dev_disconnect(struct snd_device *device)
 static void fchip_irq_pending_work(struct work_struct *work)
 {}
 
-static void assign_position_fix(struct fchip_azx *chip, int fix)
-{}
-static int check_position_fix(struct fchip_azx *chip, int fix)
-{
-	return 0;
-}
 static void fchip_check_snoop_available(struct fchip_azx *chip)
 {}
 static int default_bdl_pos_adj(struct fchip_azx *chip)
@@ -67,32 +65,11 @@ static void fchip_check_probe_mask(struct fchip_azx *chip, int dev)
 static void fchip_free(struct fchip_azx *chip)
 {}
 
-
-static void fchip_check_msi(struct fchip_azx *chip)
-{}
-
-
-static void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *chip)
-{}
-
 static void fchip_set_default_power_save(struct fchip_azx *chip)
 {}
 
 static void fchip_add_card_list(struct fchip_azx *chip)
 {}
-
-static int fchip_register_vga_switcheroo(struct fchip_azx *chip)
-{
-	return 0;
-}
-
-static void fchip_init_vga_switcheroo(struct fchip_azx *chip)
-{}
-
-static bool fchip_check_hdmi_disabled(struct pci_dev *pci)
-{
-	return false;
-}
 
 static void fchip_remove(struct pci_dev *pci)
 {}
@@ -101,8 +78,280 @@ static void fchip_shutdown(struct pci_dev *pci)
 {}
 
 
+
+int fchip_init_streams(struct fchip_azx *chip)
+{
+	return 0;
+}
+
+static void fchip_init_pci(struct fchip_azx *chip)
+{}
+
+static void fchip_hda_intel_init_chip(struct fchip_azx *chip, bool full_reset)
+{}
+
+static int fchip_acquire_irq(struct fchip_azx *chip, int do_disconnect)
+{
+	return 0;
+}
+
+static const struct snd_pci_quirk msi_allow_deny_list[] = {
+	SND_PCI_QUIRK(0x103c, 0x2191, "HP", 0), /* AMD Hudson */
+	SND_PCI_QUIRK(0x103c, 0x2192, "HP", 0), /* AMD Hudson */
+	SND_PCI_QUIRK(0x103c, 0x21f7, "HP", 0), /* AMD Hudson */
+	SND_PCI_QUIRK(0x103c, 0x21fa, "HP", 0), /* AMD Hudson */
+	SND_PCI_QUIRK(0x1043, 0x81f2, "ASUS", 0), /* Athlon64 X2 + nvidia */
+	SND_PCI_QUIRK(0x1043, 0x81f6, "ASUS", 0), /* nvidia */
+	SND_PCI_QUIRK(0x1043, 0x822d, "ASUS", 0), /* Athlon64 X2 + nvidia MCP55 */
+	SND_PCI_QUIRK(0x1179, 0xfb44, "Toshiba Satellite C870", 0), /* AMD Hudson */
+	SND_PCI_QUIRK(0x1849, 0x0888, "ASRock", 0), /* Athlon64 X2 + nvidia */
+	SND_PCI_QUIRK(0xa0a0, 0x0575, "Aopen MZ915-M", 0), /* ICH6 */
+	{}
+};
+
+static void fchip_check_msi(struct fchip_azx *chip)
+{
+	const struct snd_pci_quirk *q;
+
+	if (enable_msi >= 0) {
+		chip->msi = !!enable_msi;
+		return;
+	}
+
+	// enable MSI by default
+	chip->msi = 1;	
+	
+	// if the value is found in allow_deny list, set it to this value
+	q = snd_pci_quirk_lookup(chip->pci, msi_allow_deny_list);
+	if (q) {
+		printk(KERN_INFO "fchip: MSI for device %04x:%04x set to %d\n", q->subvendor, q->subdevice, q->value);
+		chip->msi = q->value;
+		return;
+	}
+
+	/* NVidia chipsets seem to cause troubles with MSI */
+	if (chip->driver_caps & AZX_DCAPS_NO_MSI) {
+		printk(KERN_INFO, "fchip: Disabling MSI\n");
+		chip->msi = 0;
+	}
+}
+
 static int fchip_first_init(struct fchip_azx *chip)
 {
+	int dev = chip->dev_index;
+	struct pci_dev *pci = chip->pci;
+	struct snd_card *card = chip->card;
+	struct hdac_bus *bus = azx_to_hda_bus(chip);
+	int err;
+	unsigned short gcap;
+	unsigned int dma_bits = 64;
+
+#if BITS_PER_LONG != 64
+	/* Fix up base address on ULI M5461 */
+	if (chip->driver_type == AZX_DRIVER_ULI) {
+		u16 tmp3;
+		pci_read_config_word(pci, 0x40, &tmp3);
+		pci_write_config_word(pci, 0x40, tmp3 | 0x10);
+		pci_write_config_dword(pci, PCI_BASE_ADDRESS_1, 0);
+	}
+#endif
+
+	// Fix response write request not synced to memory when handle
+	// hdac interrupt on Glenfly Gpus
+	
+	if (chip->driver_type == AZX_DRIVER_GFHDMI)
+	{
+		bus->polling_mode = 1;
+	}
+
+	if (chip->driver_type == AZX_DRIVER_LOONGSON) {
+		bus->polling_mode = 1;
+		bus->not_use_interrupts = 1;
+		bus->access_sdnctl_in_dword = 1;
+	}
+
+	err = pcim_iomap_regions(pci, 1 << 0, "ICH HD audio for filterchip");
+	if (err < 0)
+	{
+		return err;
+	}
+
+
+	bus->addr = pci_resource_start(pci, 0);
+	bus->remap_addr = pcim_iomap_table(pci)[0];
+
+	if (chip->driver_type == AZX_DRIVER_SKL)
+	{
+		snd_hdac_bus_parse_capabilities(bus);
+	}
+
+	/*
+	 * Some Intel CPUs has always running timer (ART) feature and
+	 * controller may have Global time sync reporting capability, so
+	 * check both of these before declaring synchronized time reporting
+	 * capability SNDRV_PCM_INFO_HAS_LINK_SYNCHRONIZED_ATIME
+	 */
+	chip->gts_present = false;
+
+#ifdef CONFIG_X86
+	if (bus->ppcap && boot_cpu_has(X86_FEATURE_ART))
+	{
+		chip->gts_present = true;
+	}
+#endif
+
+	if (chip->msi) {
+		if (chip->driver_caps & AZX_DCAPS_NO_MSI64) {
+			printk(KERN_DEBUG "fchip: Disabling 64bit MSI\n");
+			pci->no_64bit_msi = true;
+		}
+		if (pci_enable_msi(pci) < 0){
+			chip->msi = 0;
+		}
+	}
+
+	// enabling the device to be the bus master
+	pci_set_master(pci);
+
+	// global capabilities (p. 28)
+	gcap = fchip_readreg_w(chip, GCAP);
+	printk(KERN_DEBUG "fchip: Chipset global capabilities = 0x%x\n", gcap);
+
+	/* AMD devices support 40 or 48bit DMA, take the safe one */
+	if (chip->pci->vendor == PCI_VENDOR_ID_AMD){
+		dma_bits = 40;
+	}
+
+	/* disable SB600 64bit support for safety */
+	if (chip->pci->vendor == PCI_VENDOR_ID_ATI) {
+		struct pci_dev *p_smbus;
+		dma_bits = 40;
+
+		// iterate through known PCI devices in order to find this one:
+		p_smbus = pci_get_device(PCI_VENDOR_ID_ATI,
+					 PCI_DEVICE_ID_ATI_SBX00_SMBUS,
+					 NULL);
+		if (p_smbus) {
+			if (p_smbus->revision < 0x30){
+				gcap &= ~AZX_GCAP_64OK;
+			}
+			pci_dev_put(p_smbus);
+		}
+	}
+
+	/* NVidia hardware normally only supports up to 40 bits of DMA */
+	if (chip->pci->vendor == PCI_VENDOR_ID_NVIDIA)
+		dma_bits = 40;
+
+	/* disable 64bit DMA address on some devices */
+	if (chip->driver_caps & AZX_DCAPS_NO_64BIT) {
+		printk(KERN_DEBUG "fchip: Disabling 64bit DMA\n");
+		gcap &= ~AZX_GCAP_64OK;
+	}
+
+	/* disable buffer size rounding to 128-byte multiples if supported */
+	if (align_buffer_size >= 0){
+		chip->align_buffer_size = !!align_buffer_size;
+	}
+	else {
+		if (chip->driver_caps & AZX_DCAPS_NO_ALIGN_BUFSIZE){
+			chip->align_buffer_size = 0;
+		}
+		else{
+			chip->align_buffer_size = 1;
+		}
+	}
+
+	/* allow 64bit DMA address if supported by H/W */
+	if (!(gcap & AZX_GCAP_64OK))
+	{
+		dma_bits = 32;
+	}
+
+	// dma_set_mask_and_coherent is the same as calling 
+	// dma_set_mask and dma_set_coherent_mask for the SAME 
+	// mask (which is the case here)
+	if (dma_set_mask_and_coherent(&pci->dev, DMA_BIT_MASK(dma_bits)))
+	{
+		dma_set_mask_and_coherent(&pci->dev, DMA_BIT_MASK(32));
+	}
+	dma_set_max_seg_size(&pci->dev, UINT_MAX);
+
+	// read number of streams from GCAP register 
+	// instead of using hardcoded value
+	
+	chip->capture_streams = (gcap >> 8) & 0x0f;
+	chip->playback_streams = (gcap >> 12) & 0x0f;
+	if (!chip->playback_streams && !chip->capture_streams) {
+		// gcap didn't give any info, switching to 
+		// old method: look at chipset type
+
+		switch (chip->driver_type) {
+		case AZX_DRIVER_ULI:
+			chip->playback_streams = ULI_NUM_PLAYBACK;
+			chip->capture_streams = ULI_NUM_CAPTURE;
+			break;
+		case AZX_DRIVER_ATIHDMI:
+		case AZX_DRIVER_ATIHDMI_NS:
+			chip->playback_streams = ATIHDMI_NUM_PLAYBACK;
+			chip->capture_streams = ATIHDMI_NUM_CAPTURE;
+			break;
+		case AZX_DRIVER_GFHDMI:
+		case AZX_DRIVER_GENERIC:
+		default:
+			chip->playback_streams = ICH6_NUM_PLAYBACK;
+			chip->capture_streams = ICH6_NUM_CAPTURE;
+			break;
+		}
+	}
+
+	// similar to p.34 intel hda spec:
+	chip->capture_index_offset = 0;
+	chip->playback_index_offset = chip->capture_streams;
+	chip->num_streams = chip->playback_streams + chip->capture_streams;
+
+	// sanity check for the SDxCTL.STRM field overflow
+	if (chip->num_streams > 15 &&
+	    (chip->driver_caps & AZX_DCAPS_SEPARATE_STREAM_TAG) == 0) {
+		printk(KERN_WARNING "fchip: number of I/O streams is %d, forcing separate stream tags", chip->num_streams);
+		chip->driver_caps |= AZX_DCAPS_SEPARATE_STREAM_TAG;
+	}
+
+	/* initialize streams */
+	err = fchip_init_streams(chip);
+	if (err < 0){
+		return err;
+	}
+
+	err = fchip_alloc_stream_pages(chip);
+	if (err < 0){
+		return err;
+	}
+		
+
+	/* initialize chip */
+	fchip_init_pci(chip);
+
+	snd_hdac_i915_set_bclk(bus);
+
+	fchip_hda_intel_init_chip(chip, (probe_only[dev] & 2) == 0);
+
+	/* codec detection */
+	if (!azx_to_hda_bus(chip)->codec_mask) {
+		printk(KERN_ERR "no codecs found!\n");
+		/* keep running the rest for the runtime PM */
+	}
+
+	if (fchip_acquire_irq(chip, 0) < 0){
+		return -EBUSY;
+	}
+
+
+
+    strcpy(card->driver, FCHIP_DRIVER_NAME);
+    strcpy(card->shortname, FCHIP_DRIVER_SHORTNAME);
+    sprintf(card->longname, "%s at 0x%lx irq %i", card->shortname, bus->addr, bus->irq);
+
 	return 0;
 }
 
@@ -205,6 +454,7 @@ static int fchip_create(
 	INIT_LIST_HEAD(&fchip_azx->pcm_list);
 	INIT_WORK(&fchip_hda->irq_pending_work, fchip_irq_pending_work);
 	INIT_LIST_HEAD(&fchip_hda->list);
+	
 	fchip_init_vga_switcheroo(fchip_azx);
 	init_completion(&fchip_hda->probe_wait);
 
@@ -265,47 +515,6 @@ static int fchip_create(
 	*rchip = fchip;
 
 	return 0;
-    // // resource allocation
-    // // 1. i/o port
-    // err = pci_request_regions(pci, FCHIP_DRIVER_NAME);
-    // if(err<0){
-    //     kfree(chip);
-    //     pci_disable_device(pci);
-    //     return err;
-    // }
-    // chip->port = pci_resource_start(pci, 0);
-    
-    // // 2. interrupt source
-    // if(request_irq(pci->irq, snd_filterchip_interrupt, IRQF_SHARED, KBUILD_MODNAME, chip)){
-    //     printk(KERN_ERR "FCHIP: cannot grab irq %d\n", pci->irq);
-    //     snd_filterchip_free(chip);
-    //     return -EBUSY;
-    // }
-    // chip->irq = pci->irq;
-
-    // err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops);
-    // if(err<0){
-    //     snd_filterchip_free(chip);
-    //     return err;
-    // }
-
-    // *rchip = chip;
-    // return 0;
-
-
-    // fchip_azx->irq = -1;
-	//
-    // int dma_bits;
-	// // checking pci availability
-    // dma_bits = FCHIP_DMA_MASK_BITS;
-    // if(
-    //     dma_set_mask(&pci->dev, DMA_BIT_MASK(dma_bits))<0 ||
-    //     dma_set_coherent_mask(&pci->dev, DMA_BIT_MASK(dma_bits))<0)
-    // {
-    //     printk(KERN_ERR "FChip: error setting %dbit DMA mask\n", dma_bits);
-    //     pci_disable_device(pci);
-    //     return -ENXIO;
-    // }
 }
 
 static int fchip_probe_continue(struct fchip_azx *chip);
