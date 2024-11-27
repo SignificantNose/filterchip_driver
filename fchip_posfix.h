@@ -35,5 +35,7 @@ const struct snd_pci_quirk position_fix_list[] = {
 	{}
 };
 
+unsigned int fchip_get_pos_lpib(struct fchip_azx *chip, struct azx_dev *azx_dev);
+
 void assign_position_fix(struct fchip_azx *chip, int fix);
 int check_position_fix(struct fchip_azx *chip, int fix);

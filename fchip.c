@@ -3,6 +3,7 @@
 #include "fchip_codec.h"
 #include "fchip_vga.h"
 #include "fchip_posfix.h"
+#include "fchip_hda_bus.h"
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char* id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
@@ -18,6 +19,7 @@ static int bdl_pos_adj[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] = -1};
 static int single_cmd = -1;
 static int align_buffer_size = -1;
 static int enable_msi = -1;
+static int hda_snoop = -1;
 
 
 
@@ -48,15 +50,81 @@ static void fchip_irq_pending_work(struct work_struct *work)
 {}
 
 static void fchip_check_snoop_available(struct fchip_azx *chip)
-{}
-static int default_bdl_pos_adj(struct fchip_azx *chip)
 {
-	return 0;
+	int snoop = hda_snoop;
+
+	if (snoop >= 0) {
+		printk(KERN_INFO "fchip: Force to %s mode by module option\n",
+			 snoop ? "snoop" : "non-snoop");
+		chip->snoop = snoop;
+		chip->uc_buffer = !snoop;
+		return;
+	}
+
+	snoop = true;
+	if (fchip_get_snoop_type(chip) == AZX_SNOOP_TYPE_NONE &&
+	    chip->driver_type == AZX_DRIVER_VIA) 
+	{
+		/* force to non-snoop mode for a new VIA controller
+		 * when BIOS is set
+		 */
+		u8 val;
+		pci_read_config_byte(chip->pci, 0x42, &val);
+		if (!(val & 0x80) && (chip->pci->revision == 0x30 ||
+				      chip->pci->revision == 0x20))
+		{
+			snoop = false;
+		}
+	}
+
+	if (chip->driver_caps & AZX_DCAPS_SNOOP_OFF){
+		snoop = false;
+	}
+
+#ifdef CONFIG_X86
+	/* check the presence of DMA ops (i.e. IOMMU), disable snoop conditionally */
+	if ((chip->driver_caps & AZX_DCAPS_AMD_ALLOC_FIX) &&
+	    !get_dma_ops(chip->card->dev)){
+		snoop = false;
+	}
+#endif
+
+	chip->snoop = snoop;
+	if (!snoop) {
+		printk(KERN_INFO "fchip: Force to non-snoop mode\n");
+		/* C-Media requires non-cached pages only for CORB/RIRB */
+		if (chip->driver_type != AZX_DRIVER_CMEDIA){
+			chip->uc_buffer = true;
+		}
+	}
 }
 
-static bool fchip_snoop(struct fchip_azx *chip)
+static int default_bdl_pos_adj(struct fchip_azx *chip)
 {
-	return false;
+	/* some exceptions: Atoms seem problematic with value 1 */
+	if (chip->pci->vendor == PCI_VENDOR_ID_INTEL) {
+		switch (chip->pci->device) {
+		case PCI_DEVICE_ID_INTEL_HDA_BYT:
+		case PCI_DEVICE_ID_INTEL_HDA_BSW:
+			return 32;
+		case PCI_DEVICE_ID_INTEL_HDA_APL:
+			return 64;
+		}
+	}
+
+	switch (chip->driver_type) {
+	/*
+	 * increase the bdl size for Glenfly Gpus for hardware
+	 * limitation on hdac interrupt interval
+	 */
+	case AZX_DRIVER_GFHDMI:
+		return 128;
+	case AZX_DRIVER_ICH:
+	case AZX_DRIVER_PCH:
+		return 1;
+	default:
+		return 32;
+	}
 }
 
 static void fchip_check_probe_mask(struct fchip_azx *chip, int dev)
@@ -352,12 +420,6 @@ static int fchip_first_init(struct fchip_azx *chip)
     strcpy(card->shortname, FCHIP_DRIVER_SHORTNAME);
     sprintf(card->longname, "%s at 0x%lx irq %i", card->shortname, bus->addr, bus->irq);
 
-	return 0;
-}
-
-// hda bus initialization
-int fchip_bus_init(struct fchip_azx *chip, const char *model)
-{
 	return 0;
 }
 

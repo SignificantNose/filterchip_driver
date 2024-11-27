@@ -10,6 +10,7 @@
 #include <sound/hda_codec.h>
 #include <sound/hda_register.h>
 #include <sound/hda_i915.h>
+#include <linux/dma-map-ops.h>
 
 #define FCHIP_DRIVER_NAME "FChip"
 #define FCHIP_DRIVER_SHORTNAME "Filterchip"
@@ -326,3 +327,10 @@ struct hda_controller_ops {
 	snd_hdac_bus_alloc_stream_pages(azx_to_hda_bus(fchip_azx))
 #define fchip_free_stream_pages(fchip_azx) \
 	snd_hdac_bus_free_stream_pages(azx_to_hda_bus(fchip_azx))
+
+
+#define fchip_get_snoop_type(fchip_azx) \
+	(((fchip_azx)->driver_caps & AZX_DCAPS_SNOOP_MASK) >> 10)
+
+#define fchip_snoop(fchip_azx) \
+	(!IS_ENABLED(CONFIG_X86) || fchip_azx->snoop)
