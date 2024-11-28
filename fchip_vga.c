@@ -1,5 +1,7 @@
 #include "fchip_vga.h"
 
+
+#ifdef SUPPORT_VGA_SWITCHEROO
 struct pci_dev* get_bound_vga(struct pci_dev *pci)
 {
 	struct pci_dev *p;
@@ -41,7 +43,16 @@ struct pci_dev* get_bound_vga(struct pci_dev *pci)
 
 bool fchip_check_hdmi_disabled(struct pci_dev *pci)
 {
-	return false;
+	bool vga_inactive = false;
+	struct pci_dev *p = get_bound_vga(pci);
+
+	if (p) {
+		if (vga_switcheroo_get_client_state(p) == VGA_SWITCHEROO_OFF){
+			vga_inactive = true;
+		}
+		pci_dev_put(p);
+	}
+	return vga_inactive;
 }
 
 void fchip_init_vga_switcheroo(struct fchip_azx *chip)
@@ -63,12 +74,142 @@ void fchip_init_vga_switcheroo(struct fchip_azx *chip)
 		pci_dev_put(p);
 	}
 }
-static void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *chip)
-{}
-
-int fchip_register_vga_switcheroo(struct fchip_azx *chip)
+static void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *fchip_azx)
 {
-	return 0;
+	struct fchip_hda_intel* hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	struct hda_codec *codec;
+
+	if (hda->use_vga_switcheroo && !needs_eld_notify_link(fchip_azx)) {
+		list_for_each_codec(codec, &fchip_azx->bus){
+			codec->auto_runtime_pm = 1;
+		}
+		/* reset the power save setup */
+		if (fchip_azx->running){
+			set_default_power_save(fchip_azx);
+		}
+	}
 }
 
 
+
+
+static void fchip_vs_set_state(struct pci_dev *pci,
+			     enum vga_switcheroo_state state)
+{
+	struct snd_card* card = pci_get_drvdata(pci);
+	struct fchip_azx* fchip_azx = ((struct fchip*)(card->private_data))->azx_chip;
+	struct fchip_hda_intel* hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	struct hda_codec* codec;
+	bool disabled;
+
+	wait_for_completion(&hda->probe_wait);
+	if (hda->init_failed){
+		return;
+	}
+
+	disabled = (state == VGA_SWITCHEROO_OFF);
+	if (fchip_azx->disabled == disabled){
+		return;
+	}
+
+	if (!hda->probe_continued) {
+		fchip_azx->disabled = disabled;
+		if (!disabled) {
+			printk(KERN_INFO "fchip: Start delayed initialization\n");
+			if (azx_probe_continue(fchip_azx) < 0){
+				printk(KERN_ERR "fchip: Initialization error\n");
+			}
+		}
+	} 
+	else {
+		printk(KERN_INFO, "fchip: %s via vga_switcheroo\n", disabled ? "Disabling" : "Enabling");
+		if (disabled) {
+			list_for_each_codec(codec, &fchip_azx->bus) {
+				pm_runtime_suspend(hda_codec_dev(codec));
+				pm_runtime_disable(hda_codec_dev(codec));
+			}
+			pm_runtime_suspend(card->dev);
+			pm_runtime_disable(card->dev);
+			/* when we get suspended by vga_switcheroo we end up in D3cold,
+			 * however we have no ACPI handle, so pci/acpi can't put us there,
+			 * put ourselves there */
+			pci->current_state = PCI_D3cold;
+			fchip_azx->disabled = true;
+			if (snd_hda_lock_devices(&fchip_azx->bus)){
+				printk(KERN_WARNING "fchip: Cannot lock devices!\n");
+			}
+		} 
+		else {
+			snd_hda_unlock_devices(&fchip_azx->bus);
+			fchip_azx->disabled = false;
+			pm_runtime_enable(card->dev);
+			list_for_each_codec(codec, &fchip_azx->bus) {
+				pm_runtime_enable(hda_codec_dev(codec));
+				pm_runtime_resume(hda_codec_dev(codec));
+			}
+		}
+	}
+}
+
+static bool fchip_vs_can_switch(struct pci_dev *pci)
+{
+	struct snd_card* card = pci_get_drvdata(pci);
+	struct fchip_azx* fchip_azx = ((struct fchip*)(card->private_data))->azx_chip;
+	struct fchip_hda_intel* hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+
+	wait_for_completion(&hda->probe_wait);
+	if (hda->init_failed){
+		return false;
+	}
+	if (fchip_azx->disabled || !hda->probe_continued){
+		return true;
+	}
+	if (snd_hda_lock_devices(&fchip_azx->bus)){
+		return false;
+	}
+	snd_hda_unlock_devices(&fchip_azx->bus);
+	return true;
+}
+
+static void fchip_vs_gpu_bound(struct pci_dev *pci,
+			     enum vga_switcheroo_client_id client_id)
+{
+	struct snd_card* card = pci_get_drvdata(pci);
+	struct fchip_azx* fchip_azx = ((struct fchip*)(card->private_data))->azx_chip;
+
+	if (client_id == VGA_SWITCHEROO_DIS){
+		fchip_azx->bus.keep_power = 0;
+	}
+	fchip_setup_vga_switcheroo_runtime_pm(fchip_azx);
+}
+
+static const struct vga_switcheroo_client_ops fchip_vga_switcheroo_ops = {
+	.set_gpu_state = fchip_vs_set_state,
+	.can_switch = fchip_vs_can_switch,
+	.gpu_bound = fchip_vs_gpu_bound,
+};
+
+
+
+int fchip_register_vga_switcheroo(struct fchip_azx *chip)
+{
+	struct fchip_hda_intel *hda = container_of(chip, struct fchip_hda_intel, chip);
+	struct pci_dev *p;
+	int err;
+
+	if (!hda->use_vga_switcheroo){
+		return 0;
+	}
+
+	p = get_bound_vga(chip->pci);
+	err = vga_switcheroo_register_audio_client(chip->pci, &fchip_vga_switcheroo_ops, p);
+	pci_dev_put(p);
+
+	if (err < 0){
+		return err;
+	}
+	hda->vga_switcheroo_registered = 1;
+
+	return 0;
+}
+#endif
