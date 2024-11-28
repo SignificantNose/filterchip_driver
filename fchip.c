@@ -36,6 +36,23 @@ static bool beep_mode[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] =
 static bool ctl_dev_id = IS_ENABLED(CONFIG_SND_HDA_CTL_DEV_ID) ? 1 : 0;
 
 
+
+
+void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset)
+{
+	if (snd_hdac_bus_init_chip(azx_to_hda_bus(fchip_azx), full_reset)) {
+		/* correct RINTCNT for CXT */
+		if (fchip_azx->driver_caps & AZX_DCAPS_CTX_WORKAROUND){
+			fchip_writereg_w(fchip_azx, RINTCNT, 0xc0);
+		}
+	}
+}
+void fchip_stop_chip(struct fchip_azx* fchip_azx)
+{
+	snd_hdac_bus_stop_chip(azx_to_hda_bus(fchip_azx));
+}
+
+
 // COMPONENT dtor
 static int fchip_dev_free(struct snd_device* device)
 {
@@ -296,16 +313,6 @@ static void fchip_init_pci(struct fchip_azx* fchip_azx)
 			(snoop & INTEL_SCH_HDA_DEVC_NOSNOOP) ?
 			"Disabled" : "Enabled");
     }
-}
-
-void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset)
-{
-	if (snd_hdac_bus_init_chip(azx_to_hda_bus(fchip_azx), full_reset)) {
-		/* correct RINTCNT for CXT */
-		if (fchip_azx->driver_caps & AZX_DCAPS_CTX_WORKAROUND){
-			fchip_writereg_w(fchip_azx, RINTCNT, 0xc0);
-		}
-	}
 }
 
 /*

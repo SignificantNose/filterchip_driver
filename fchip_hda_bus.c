@@ -51,7 +51,7 @@ static int fchip_single_send_cmd(struct hdac_bus *bus, u32 val)
 	return -EIO;
 }
 
-static int fchip_send_cmd(struct hdac_bus *bus, unsigned int val)
+int fchip_send_cmd(struct hdac_bus *bus, unsigned int val)
 {
 	struct fchip_azx *fchip_azx = hdac_bus_to_azx(bus);
 
@@ -144,8 +144,7 @@ static int fchip_rirb_get_response(struct hdac_bus *bus, unsigned int addr,
 }
 
 
-static int fchip_get_response(struct hdac_bus *bus, unsigned int addr,
-			    unsigned int *res)
+int fchip_get_response(struct hdac_bus *bus, unsigned int addr, unsigned int *res)
 {
 	struct fchip_azx *fchip_azx = hdac_bus_to_azx(bus);
 

@@ -362,3 +362,7 @@ struct hda_controller_ops {
 
 #define fchip_snoop(fchip_azx) \
 	(!IS_ENABLED(CONFIG_X86) || fchip_azx->snoop)
+
+
+void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset);
+void fchip_stop_chip(struct fchip_azx* fchip_azx);
