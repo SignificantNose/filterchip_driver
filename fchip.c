@@ -377,10 +377,10 @@ static void fchip_init_pci(struct fchip_azx* fchip_azx)
 	if (snoop_type == AZX_SNOOP_TYPE_SCH) {
 		unsigned short snoop;
 		pci_read_config_word(fchip_azx->pci, INTEL_SCH_HDA_DEVC, &snoop);
-		if ((!azx_snoop(fchip_azx) && !(snoop & INTEL_SCH_HDA_DEVC_NOSNOOP)) ||
-		    (azx_snoop(fchip_azx) && (snoop & INTEL_SCH_HDA_DEVC_NOSNOOP))) {
+		if ((!fchip_snoop(fchip_azx) && !(snoop & INTEL_SCH_HDA_DEVC_NOSNOOP)) ||
+		    (fchip_snoop(fchip_azx) && (snoop & INTEL_SCH_HDA_DEVC_NOSNOOP))) {
 			snoop &= ~INTEL_SCH_HDA_DEVC_NOSNOOP;
-			if (!azx_snoop(fchip_azx)){
+			if (!fchip_snoop(fchip_azx)){
 				snoop |= INTEL_SCH_HDA_DEVC_NOSNOOP;
 			}
 			pci_write_config_word(fchip_azx->pci, INTEL_SCH_HDA_DEVC, snoop);
