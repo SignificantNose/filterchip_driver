@@ -58,18 +58,26 @@ void fchip_stop_chip(struct fchip_azx* fchip_azx)
 }
 
 
+static int fchip_dev_disconnect(struct snd_device *device)
+{
+	struct fchip_azx* fchip_azx = device->device_data;
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+
+	fchip_azx->bus.shutdown = 1;
+	cancel_work_sync(&bus->unsol_work);
+
+	return 0;
+}
+
 // COMPONENT dtor
 static int fchip_dev_free(struct snd_device* device)
 {
     // printk(KERN_DEBUG "fchip: Device free called\n");
     // return snd_filterchip_free(device->device_data);
+	fchip_free(device->device_data);
 	return 0;
 }
 
-static int fchip_dev_disconnect(struct snd_device *device)
-{
-	return 0;
-}
 static void fchip_irq_pending_work(struct work_struct *work)
 {}
 
@@ -194,8 +202,82 @@ static void fchip_check_probe_mask(struct fchip_azx *fchip_azx, int dev)
 	}
 }
 
-static void fchip_free(struct fchip_azx *chip)
-{}
+static void fchip_free_streams(struct fchip_azx* fchip_azx)
+{
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+	struct hdac_stream *s;
+
+	while (!list_empty(&bus->stream_list)) {
+		s = list_first_entry(&bus->stream_list, struct hdac_stream, list);
+		list_del(&s->list);
+		kfree(hdac_stream_to_azx_dev(s));
+	}
+}
+
+static void fchip_stop_all_streams(struct fchip_azx* fchip_azx)
+{
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+
+	snd_hdac_stop_streams(bus);
+}
+
+static void fchip_free(struct fchip_azx* fchip_azx)
+{
+	struct pci_dev *pci = fchip_azx->pci;
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+
+	if (hda->freed){
+		return;
+	}
+
+	if (fchip_has_pm_runtime(fchip_azx) && fchip_azx->running) {
+		pm_runtime_get_noresume(&pci->dev);
+		pm_runtime_forbid(&pci->dev);
+		pm_runtime_dont_use_autosuspend(&pci->dev);
+	}
+
+	fchip_azx->running = 0;
+
+	fchip_del_card_list(fchip_azx);
+
+	hda->init_failed = 1; /* to be sure */
+	complete_all(&hda->probe_wait);
+
+	if (hda->use_vga_switcheroo) {
+		if (fchip_azx->disabled && hda->probe_continued){
+			snd_hda_unlock_devices(&fchip_azx->bus);
+		}
+		if (hda->vga_switcheroo_registered){
+			vga_switcheroo_unregister_client(fchip_azx->pci);
+		}
+	}
+
+	if (bus->chip_init) {
+		fchip_clear_irq_pending(fchip_azx);
+		fchip_stop_all_streams(fchip_azx);
+		fchip_stop_chip(fchip_azx);
+	}
+
+	if (bus->irq >= 0){
+		free_irq(bus->irq, (void*)fchip_azx);
+	}
+
+	fchip_free_stream_pages(fchip_azx);
+	fchip_free_streams(fchip_azx);
+	snd_hdac_bus_exit(bus);
+
+#ifdef CONFIG_SND_HDA_PATCH_LOADER
+	release_firmware(fchip_azx->fw);
+#endif
+	fchip_display_power(fchip_azx, false);
+
+	if (fchip_azx->driver_caps & AZX_DCAPS_I915_COMPONENT){
+		snd_hdac_i915_exit(bus);
+	}
+
+	hda->freed = 1;
+}
 
 /* On some boards setting power_save to a non 0 value leads to clicking /
  * popping sounds when ever we enter/leave powersaving mode. Ideally we would

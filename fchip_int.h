@@ -6,3 +6,4 @@
 
 
 int fchip_acquire_irq(struct fchip_azx *fchip_azx, int do_disconnect);
+void fchip_clear_irq_pending(struct fchip_azx* fchip_azx);

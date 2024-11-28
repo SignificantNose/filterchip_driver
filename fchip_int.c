@@ -95,3 +95,17 @@ int fchip_acquire_irq(struct fchip_azx *fchip_azx, int do_disconnect)
 	pci_intx(fchip_azx->pci, !fchip_azx->msi);
 	return 0;
 }
+
+/* clear irq_pending flags and assure no on-going workq */
+void fchip_clear_irq_pending(struct fchip_azx* fchip_azx)
+{
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+	struct hdac_stream *s;
+
+	spin_lock_irq(&bus->reg_lock);
+	list_for_each_entry(s, &bus->stream_list, list) {
+		struct azx_dev *azx_dev = hdac_stream_to_azx_dev(s);
+		azx_dev->irq_pending = 0;
+	}
+	spin_unlock_irq(&bus->reg_lock);
+}
