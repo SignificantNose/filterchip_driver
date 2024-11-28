@@ -22,6 +22,7 @@ static int single_cmd = -1;
 static int align_buffer_size = -1;
 static int enable_msi = -1;
 static int hda_snoop = -1;
+static int pm_blacklist = -1;
 
 
 
@@ -34,8 +35,12 @@ static bool beep_mode[SNDRV_CARDS] = {[0 ... (SNDRV_CARDS-1)] =
 					CONFIG_SND_HDA_INPUT_BEEP_MODE};
 
 static bool ctl_dev_id = IS_ENABLED(CONFIG_SND_HDA_CTL_DEV_ID) ? 1 : 0;
+static int power_save = CONFIG_SND_HDA_POWER_SAVE_DEFAULT;
 
 
+
+static DEFINE_MUTEX(card_list_lock);
+static LIST_HEAD(card_list);
 
 
 void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset)
@@ -192,11 +197,85 @@ static void fchip_check_probe_mask(struct fchip_azx *fchip_azx, int dev)
 static void fchip_free(struct fchip_azx *chip)
 {}
 
-static void fchip_set_default_power_save(struct fchip_azx *chip)
-{}
+/* On some boards setting power_save to a non 0 value leads to clicking /
+ * popping sounds when ever we enter/leave powersaving mode. Ideally we would
+ * figure out how to avoid these sounds, but that is not always feasible.
+ * So we keep a list of devices where we disable powersaving as its known
+ * to causes problems on these devices.
+ */
+static const struct snd_pci_quirk power_save_denylist[] = {
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	SND_PCI_QUIRK(0x1849, 0xc892, "Asrock B85M-ITX", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	SND_PCI_QUIRK(0x1849, 0x0397, "Asrock N68C-S UCC", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	SND_PCI_QUIRK(0x1849, 0x7662, "Asrock H81M-HDS", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	SND_PCI_QUIRK(0x1043, 0x8733, "Asus Prime X370-Pro", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	SND_PCI_QUIRK(0x1028, 0x0497, "Dell Precision T3600", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	/* Note the P55A-UD3 and Z87-D3HP share the subsys id for the HDA dev */
+	SND_PCI_QUIRK(0x1458, 0xa002, "Gigabyte P55A-UD3 / Z87-D3HP", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1525104 */
+	SND_PCI_QUIRK(0x8086, 0x2040, "Intel DZ77BH-55K", 0),
+	/* https://bugzilla.kernel.org/show_bug.cgi?id=199607 */
+	SND_PCI_QUIRK(0x8086, 0x2057, "Intel NUC5i7RYB", 0),
+	/* https://bugs.launchpad.net/bugs/1821663 */
+	SND_PCI_QUIRK(0x8086, 0x2064, "Intel SDP 8086:2064", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1520902 */
+	SND_PCI_QUIRK(0x8086, 0x2068, "Intel NUC7i3BNB", 0),
+	/* https://bugzilla.kernel.org/show_bug.cgi?id=198611 */
+	SND_PCI_QUIRK(0x17aa, 0x2227, "Lenovo X1 Carbon 3rd Gen", 0),
+	SND_PCI_QUIRK(0x17aa, 0x316e, "Lenovo ThinkCentre M70q", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1689623 */
+	SND_PCI_QUIRK(0x17aa, 0x367b, "Lenovo IdeaCentre B550", 0),
+	/* https://bugzilla.redhat.com/show_bug.cgi?id=1572975 */
+	SND_PCI_QUIRK(0x17aa, 0x36a7, "Lenovo C50 All in one", 0),
+	/* https://bugs.launchpad.net/bugs/1821663 */
+	SND_PCI_QUIRK(0x1631, 0xe017, "Packard Bell NEC IMEDIA 5204", 0),
+	/* KONTRON SinglePC may cause a stall at runtime resume */
+	SND_PCI_QUIRK(0x1734, 0x1232, "KONTRON SinglePC", 0),
+	{}
+};
 
-static void fchip_add_card_list(struct fchip_azx *chip)
-{}
+static void fchip_set_default_power_save(struct fchip_azx* fchip_azx)
+{
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	int val = power_save;
+
+	if (pm_blacklist < 0) {
+		const struct snd_pci_quirk *q;
+
+		q = snd_pci_quirk_lookup(fchip_azx->pci, power_save_denylist);
+		if (q && val) {
+			printk(KERN_INFO "fchip: Device %04x:%04x is on the power_save denylist, forcing power_save to 0\n",
+				 q->subvendor, q->subdevice);
+			val = 0;
+			hda->runtime_pm_disabled = 1;
+		}
+	} else if (pm_blacklist > 0) {
+		printk(KERN_INFO "fchip: Forcing power_save to 0 via option\n");
+		val = 0;
+	}
+	snd_hda_set_power_save(&fchip_azx->bus, val * 1000);
+}
+
+static void fchip_add_card_list(struct fchip_azx* fchip_azx)
+{
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	mutex_lock(&card_list_lock);
+	list_add(&hda->list, &card_list);
+	mutex_unlock(&card_list_lock);
+}
+
+static void fchip_del_card_list(struct fchip_azx* fchip_azx)
+{
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	mutex_lock(&card_list_lock);
+	list_del_init(&hda->list);
+	mutex_unlock(&card_list_lock);
+}
 
 static void fchip_remove(struct pci_dev *pci)
 {}
