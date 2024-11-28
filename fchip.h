@@ -176,6 +176,27 @@ enum {
 	 AZX_DCAPS_NO_64BIT |\
 	 AZX_DCAPS_4K_BDLE_BOUNDARY | AZX_DCAPS_SNOOP_OFF)
 
+
+// snooping:
+/* Defines for ATI HD Audio support in SB450 south bridge */
+#define ATI_SB450_HDAUDIO_MISC_CNTR2_ADDR   0x42
+#define ATI_SB450_HDAUDIO_ENABLE_SNOOP      0x02
+
+/* Defines for Nvidia HDA support */
+#define NVIDIA_HDA_TRANSREG_ADDR      0x4e
+#define NVIDIA_HDA_ENABLE_COHBITS     0x0f
+#define NVIDIA_HDA_ISTRM_COH          0x4d
+#define NVIDIA_HDA_OSTRM_COH          0x4c
+#define NVIDIA_HDA_ENABLE_COHBIT      0x01
+
+/* Defines for Intel SCH HDA snoop control */
+#define INTEL_HDA_CGCTL	 0x48
+#define INTEL_HDA_CGCTL_MISCBDCGE        (0x1 << 6)
+#define INTEL_SCH_HDA_DEVC      0x78
+#define INTEL_SCH_HDA_DEVC_NOSNOOP       (0x1<<11)
+
+
+
 #pragma endregion
 
 
@@ -330,6 +351,10 @@ struct hda_controller_ops {
 	snd_hdac_bus_alloc_stream_pages(azx_to_hda_bus(fchip_azx))
 #define fchip_free_stream_pages(fchip_azx) \
 	snd_hdac_bus_free_stream_pages(azx_to_hda_bus(fchip_azx))
+
+
+#define fchip_has_pm_runtime(fchip_azx) \
+	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
 
 
 #define fchip_get_snoop_type(fchip_azx) \
