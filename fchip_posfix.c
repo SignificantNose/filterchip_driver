@@ -68,7 +68,7 @@ static unsigned int fchip_via_get_position(struct fchip_azx *chip,
 	return bound_pos + mod_dma_pos;
 }
 
-static unsigned int fchip_get_pos_fifo(struct azx *chip, struct azx_dev *azx_dev)
+static unsigned int fchip_get_pos_fifo(struct fchip_azx *chip, struct azx_dev *azx_dev)
 {
 	struct snd_pcm_substream *substream = azx_dev->core.substream;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -101,7 +101,7 @@ static unsigned int fchip_get_pos_fifo(struct azx *chip, struct azx_dev *azx_dev
 	return pos;
 }
 
-static int azx_get_delay_from_fifo(struct fchip_azx *chip, struct azx_dev *azx_dev,
+static int fchip_get_delay_from_fifo(struct fchip_azx *chip, struct azx_dev *azx_dev,
 				   unsigned int pos)
 {
 	struct snd_pcm_substream *substream = azx_dev->core.substream;
@@ -110,7 +110,7 @@ static int azx_get_delay_from_fifo(struct fchip_azx *chip, struct azx_dev *azx_d
 	return substream->runtime->delay;
 }
 
-static int azx_get_delay_from_lpib(struct fchip_azx *chip, struct azx_dev *azx_dev,
+static int fchip_get_delay_from_lpib(struct fchip_azx *chip, struct azx_dev *azx_dev,
 				   unsigned int pos)
 {
 	struct snd_pcm_substream *substream = azx_dev->core.substream;
@@ -165,11 +165,11 @@ void assign_position_fix(struct fchip_azx *chip, int fix)
 
 	if ((fix == POS_FIX_POSBUF || fix == POS_FIX_SKL) &&
 	    (chip->driver_caps & AZX_DCAPS_COUNT_LPIB_DELAY)) {
-		chip->get_delay[0] = chip->get_delay[1] = azx_get_delay_from_lpib;
+		chip->get_delay[0] = chip->get_delay[1] = fchip_get_delay_from_lpib;
 	}
 
 	if (fix == POS_FIX_FIFO)
-		chip->get_delay[0] = chip->get_delay[1] = azx_get_delay_from_fifo;
+		chip->get_delay[0] = chip->get_delay[1] = fchip_get_delay_from_fifo;
 }
 
 

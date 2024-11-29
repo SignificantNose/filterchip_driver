@@ -212,6 +212,9 @@ struct azx_dev {
 	unsigned int insufficient:1;
 };
 
+// very necessary line of code, for callbacks to be casted properly
+struct fchip_azx;
+
 typedef unsigned int (*azx_get_pos_callback_t)(struct fchip_azx *, struct azx_dev *);
 typedef int (*azx_get_delay_callback_t)(struct fchip_azx *, struct azx_dev *, unsigned int pos);
 

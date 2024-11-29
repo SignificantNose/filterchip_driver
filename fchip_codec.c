@@ -97,7 +97,7 @@ int fchip_codec_configure(struct fchip_azx* fchip_azx)
 		/* unregister failed codecs if any codec has been probed */
 		list_for_each_codec_safe(codec, next, &fchip_azx->bus) {
 			if (!codec->configured) {
-				codec_err(codec, "Unable to configure, disabling\n");
+				printk(KERN_ERR "fchip: Unable to configure codec #%d, disabling\n", codec->addr);
 				snd_hdac_device_unregister(&codec->core);
 			}
 		}
