@@ -8,4 +8,4 @@
 int fchip_acquire_irq(struct fchip_azx *fchip_azx, int do_disconnect);
 void fchip_clear_irq_pending(struct fchip_azx* fchip_azx);
 int fchip_disable_msi_reset_irq(struct fchip_azx *chip);
-static void fchip_irq_pending_work(struct work_struct *work);
+void fchip_irq_pending_work(struct work_struct *work);

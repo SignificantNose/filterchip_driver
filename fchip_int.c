@@ -76,7 +76,7 @@ irqreturn_t fchip_interrupt(int irq, void *dev_id)
 	return IRQ_RETVAL(handled);
 }
 
-static void fchip_irq_pending_work(struct work_struct *work)
+void fchip_irq_pending_work(struct work_struct *work)
 {
 	struct fchip_hda_intel* hda = container_of(work, struct fchip_hda_intel, irq_pending_work);
 	struct fchip_azx* fchip_azx = &hda->chip;
