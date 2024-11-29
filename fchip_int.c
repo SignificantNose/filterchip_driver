@@ -1,5 +1,6 @@
 #include "fchip_int.h"
 #include "fchip_hda_bus.h"
+#include "fchip_posfix.h"
 
 static void stream_update(struct hdac_bus *bus, struct hdac_stream *s)
 {
@@ -73,6 +74,55 @@ irqreturn_t fchip_interrupt(int irq, void *dev_id)
 	spin_unlock(&bus->reg_lock);
 
 	return IRQ_RETVAL(handled);
+}
+
+static void fchip_irq_pending_work(struct work_struct *work)
+{
+	struct fchip_hda_intel* hda = container_of(work, struct fchip_hda_intel, irq_pending_work);
+	struct fchip_azx* fchip_azx = &hda->chip;
+	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+	struct hdac_stream *s;
+	int pending, ok;
+
+	if (!hda->irq_pending_warned) {
+		printk(KERN_INFO "fchip: IRQ timing workaround is activated for card #%d. Suggest a bigger bdl_pos_adj.\n",
+			 fchip_azx->card->number);
+		hda->irq_pending_warned = 1;
+	}
+
+	for (;;) {
+		pending = 0;
+		spin_lock_irq(&bus->reg_lock);
+
+		list_for_each_entry(s, &bus->stream_list, list) {
+			struct azx_dev *azx_dev = hdac_stream_to_azx_dev(s);
+			if (!azx_dev->irq_pending || !s->substream || !s->running)
+			{
+				continue;
+			}
+
+			ok = fchip_position_ok(fchip_azx, azx_dev);
+			if (ok > 0) {
+				azx_dev->irq_pending = 0;
+				spin_unlock(&bus->reg_lock);
+				snd_pcm_period_elapsed(s->substream);
+				spin_lock(&bus->reg_lock);
+			} 
+			else if (ok < 0) {
+				pending = 0;	/* too early */
+			} 
+			else{
+				pending++;
+			}
+		}
+		
+		spin_unlock_irq(&bus->reg_lock);
+		if (!pending){
+			return;
+		}
+
+		msleep(1);
+	}
 }
 
 int fchip_acquire_irq(struct fchip_azx *fchip_azx, int do_disconnect)

@@ -16,7 +16,9 @@ enum {
 	POS_FIX_FIFO,
 };
 
-unsigned int fchip_get_pos_lpib(struct fchip_azx *chip, struct azx_dev *azx_dev);
-
 void assign_position_fix(struct fchip_azx *chip, int fix);
 int check_position_fix(struct fchip_azx *chip, int fix);
+
+
+unsigned int fchip_get_pos_lpib(struct fchip_azx* chip, struct azx_dev* azx_dev);
+int fchip_position_ok(struct fchip_azx* fchip_azx, struct azx_dev* azx_dev);

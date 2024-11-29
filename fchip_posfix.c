@@ -235,3 +235,102 @@ int check_position_fix(struct fchip_azx *chip, int fix)
 	}
 	return POS_FIX_AUTO;
 }
+
+/*
+ * Check whether the current DMA position is acceptable for updating
+ * periods.  Returns non-zero if it's OK.
+ *
+ * Many HD-audio controllers appear pretty inaccurate about
+ * the update-IRQ timing.  The IRQ is issued before actually the
+ * data is processed.  So, we need to process it afterwords in a
+ * workqueue.
+ *
+ * Returns 1 if OK to proceed, 0 for delay handling, -1 for skipping update
+ */
+int fchip_position_ok(struct fchip_azx* fchip_azx, struct azx_dev* azx_dev)
+{
+	struct snd_pcm_substream *substream = azx_dev->core.substream;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	int stream = substream->stream;
+	u32 wallclk;
+	unsigned int pos;
+	snd_pcm_uframes_t hwptr, target;
+
+	/*
+	 * The value of the WALLCLK register is always 0
+	 * on the Loongson controller, so we return directly.
+	 */
+	if (fchip_azx->driver_type == AZX_DRIVER_LOONGSON){
+		return 1;
+	}
+
+	wallclk = fchip_readreg_l(fchip_azx, WALLCLK) - azx_dev->core.start_wallclk;
+	if (wallclk < (azx_dev->core.period_wallclk * 2) / 3){
+		return -1;	/* bogus (too early) interrupt */
+	}
+
+	if (fchip_azx->get_position[stream]){
+		pos = fchip_azx->get_position[stream](fchip_azx, azx_dev);
+	}
+	else { /* use the position buffer as default */
+		pos = fchip_get_pos_posbuf(fchip_azx, azx_dev);
+		if (!pos || pos == (u32)-1) {
+			printk(KERN_INFO "fchip: Invalid position buffer, using LPIB read method instead.\n");
+			fchip_azx->get_position[stream] = fchip_get_pos_lpib;
+			if (fchip_azx->get_position[0] == fchip_get_pos_lpib &&
+			    fchip_azx->get_position[1] == fchip_get_pos_lpib)
+			{
+				azx_to_hda_bus(fchip_azx)->use_posbuf = false;
+			}
+
+			pos = fchip_get_pos_lpib(fchip_azx, azx_dev);
+			fchip_azx->get_delay[stream] = NULL;
+		} 
+		else {
+			fchip_azx->get_position[stream] = fchip_get_pos_posbuf;
+			if (fchip_azx->driver_caps & AZX_DCAPS_COUNT_LPIB_DELAY)
+			{
+				fchip_azx->get_delay[stream] = fchip_get_delay_from_lpib;
+			}
+		}
+	}
+
+	if (pos >= azx_dev->core.bufsize){
+		pos = 0;
+	}
+
+	if (WARN_ONCE(!azx_dev->core.period_bytes,
+		      "hda-intel: zero azx_dev->period_bytes"))
+		return -1; /* this shouldn't happen! */
+	if (wallclk < (azx_dev->core.period_wallclk * 5) / 4 &&
+	    pos % azx_dev->core.period_bytes > azx_dev->core.period_bytes / 2)
+	{
+		/* NG - it's below the first next period boundary */
+		return fchip_azx->bdl_pos_adj ? 0 : -1;
+	}
+	azx_dev->core.start_wallclk += wallclk;
+
+	if (azx_dev->core.no_period_wakeup){
+		return 1; /* OK, no need to check period boundary */
+	}
+
+	if (runtime->hw_ptr_base != runtime->hw_ptr_interrupt){
+		return 1; /* OK, already in hwptr updating process */
+	}
+
+	/* check whether the period gets really elapsed */
+	pos = bytes_to_frames(runtime, pos);
+	hwptr = runtime->hw_ptr_base + pos;
+	
+	if (hwptr < runtime->status->hw_ptr){
+		hwptr += runtime->buffer_size;
+	}
+
+	target = runtime->hw_ptr_interrupt + runtime->period_size;
+	if (hwptr < target) {
+		/* too early wakeup, process it later */
+		return fchip_azx->bdl_pos_adj ? 0 : -1;
+	}
+
+	return 1; /* OK, it's fine */
+}

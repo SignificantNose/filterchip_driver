@@ -106,9 +106,6 @@ static int fchip_dev_free(struct snd_device* device)
 	return 0;
 }
 
-static void fchip_irq_pending_work(struct work_struct *work)
-{}
-
 static void fchip_check_snoop_available(struct fchip_azx *chip)
 {
 	int snoop = hda_snoop;
@@ -942,8 +939,21 @@ static void fchip_probe_work(struct work_struct *work)
 }
 
 
-static int fchip_position_check(struct fchip_azx *chip, struct azx_dev *azx_dev)
+static int fchip_position_check(struct fchip_azx* fchip_azx, struct azx_dev* azx_dev)
 {
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	int ok;
+
+	ok = fchip_position_ok(fchip_azx, azx_dev);
+	if (ok == 1) {
+		azx_dev->irq_pending = 0;
+		return ok;
+	} 
+	else if (ok == 0) {
+		/* bogus IRQ, process it later */
+		azx_dev->irq_pending = 1;
+		schedule_work(&hda->irq_pending_work);
+	}
 	return 0;
 }
 
