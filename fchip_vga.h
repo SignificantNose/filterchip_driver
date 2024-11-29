@@ -1,6 +1,7 @@
 #pragma once
 #include "fchip.h"
 #include <linux/vga_switcheroo.h>
+#include <linux/apple-gmux.h>
 
 #if defined(CONFIG_PM) && defined(CONFIG_VGA_SWITCHEROO)
 #if IS_ENABLED(CONFIG_SND_HDA_CODEC_HDMI)

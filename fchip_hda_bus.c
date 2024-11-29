@@ -1,6 +1,17 @@
 #include "fchip_hda_bus.h"
 #include "fchip_posfix.h"
 
+static unsigned int fchip_command_addr(u32 cmd)
+{
+	unsigned int addr = cmd >> 28;
+
+	if (addr >= AZX_MAX_CODECS) {
+		snd_BUG();
+		addr = 0;
+	}
+
+	return addr;
+}
 
 // send cmd callbacks
 static int fchip_single_wait_for_response(struct fchip_azx *fchip_azx, unsigned int addr)
@@ -27,10 +38,10 @@ static int fchip_single_wait_for_response(struct fchip_azx *fchip_azx, unsigned 
 static int fchip_single_send_cmd(struct hdac_bus *bus, u32 val)
 {
 	struct fchip_azx* fchip_azx = hdac_bus_to_azx(bus);
-	unsigned int addr = azx_command_addr(val);
+	unsigned int addr = fchip_command_addr(val);
 	int timeout = 50;
 
-	bus->last_cmd[azx_command_addr(val)] = val;
+	bus->last_cmd[fchip_command_addr(val)] = val;
 	while (timeout--) {
 		/* check ICB busy bit */
 		if (!((fchip_readreg_w(fchip_azx, IRS) & AZX_IRS_BUSY))) {

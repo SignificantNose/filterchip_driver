@@ -43,6 +43,32 @@ static DEFINE_MUTEX(card_list_lock);
 static LIST_HEAD(card_list);
 
 
+void update_pci_byte(struct pci_dev *pci, unsigned int reg, unsigned char mask, unsigned char val)
+{
+	unsigned char data;
+
+	pci_read_config_byte(pci, reg, &data);
+	data &= ~mask;
+	data |= (val & mask);
+	pci_write_config_byte(pci, reg, data);
+}
+
+static void fchip_add_card_list(struct fchip_azx* fchip_azx)
+{
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	mutex_lock(&card_list_lock);
+	list_add(&hda->list, &card_list);
+	mutex_unlock(&card_list_lock);
+}
+
+static void fchip_del_card_list(struct fchip_azx* fchip_azx)
+{
+	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+	mutex_lock(&card_list_lock);
+	list_del_init(&hda->list);
+	mutex_unlock(&card_list_lock);
+}
+
 void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset)
 {
 	if (snd_hdac_bus_init_chip(azx_to_hda_bus(fchip_azx), full_reset)) {
@@ -69,6 +95,8 @@ static int fchip_dev_disconnect(struct snd_device *device)
 	return 0;
 }
 
+
+static void fchip_free(struct fchip_azx* fchip_azx);
 // COMPONENT dtor
 static int fchip_dev_free(struct snd_device* device)
 {
@@ -321,7 +349,7 @@ static const struct snd_pci_quirk power_save_denylist[] = {
 	{}
 };
 
-static void fchip_set_default_power_save(struct fchip_azx* fchip_azx)
+void fchip_set_default_power_save(struct fchip_azx* fchip_azx)
 {
 	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
 	int val = power_save;
@@ -343,21 +371,6 @@ static void fchip_set_default_power_save(struct fchip_azx* fchip_azx)
 	snd_hda_set_power_save(&fchip_azx->bus, val * 1000);
 }
 
-static void fchip_add_card_list(struct fchip_azx* fchip_azx)
-{
-	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
-	mutex_lock(&card_list_lock);
-	list_add(&hda->list, &card_list);
-	mutex_unlock(&card_list_lock);
-}
-
-static void fchip_del_card_list(struct fchip_azx* fchip_azx)
-{
-	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
-	mutex_lock(&card_list_lock);
-	list_del_init(&hda->list);
-	mutex_unlock(&card_list_lock);
-}
 
 static void fchip_remove(struct pci_dev *pci)
 {
@@ -929,14 +942,6 @@ static void fchip_probe_work(struct work_struct *work)
 }
 
 
-#define fchip_display_power(fchip_azx, enable) \
-	snd_hdac_display_power(azx_to_hda_bus(fchip_azx), HDA_CODEC_IDX_CONTROLLER, enable)
-
-#define fchip_has_pm_runtime(fchip_azx) \
-	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
-
-
-
 static int fchip_position_check(struct fchip_azx *chip, struct azx_dev *azx_dev)
 {
 	return 0;
@@ -1076,7 +1081,7 @@ static int fchip_create(
 	return 0;
 }
 
-static int fchip_probe_continue(struct fchip_azx *chip);
+int fchip_probe_continue(struct fchip_azx *chip);
 
 #ifdef CONFIG_SND_HDA_PATCH_LOADER
 static void fchip_firmware_cb(const struct firmware *fw, void *context)
@@ -1097,7 +1102,7 @@ static void fchip_firmware_cb(const struct firmware *fw, void *context)
 #endif // CONFIG_SND_HDA_PATCH_LOADER
 
 
-static int fchip_probe_continue(struct fchip_azx *fchip_azx)
+int fchip_probe_continue(struct fchip_azx *fchip_azx)
 {
 	struct fchip_hda_intel *hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
 	struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);

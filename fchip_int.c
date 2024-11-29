@@ -120,7 +120,7 @@ int fchip_disable_msi_reset_irq(struct fchip_azx* fchip_azx)
 	fchip_azx->card->sync_irq = -1;
 	pci_disable_msi(fchip_azx->pci);
 	fchip_azx->msi = 0;
-	err = azx_acquire_irq(fchip_azx, 1);
+	err = fchip_acquire_irq(fchip_azx, 1);
 	if (err < 0){
 		return err;
     }

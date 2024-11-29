@@ -2,6 +2,36 @@
 
 
 #ifdef SUPPORT_VGA_SWITCHEROO
+
+#ifdef CONFIG_ACPI
+/* ATPX is in the integrated GPU's namespace */
+static bool atpx_present(void)
+{
+	struct pci_dev *pdev = NULL;
+	acpi_handle dhandle, atpx_handle;
+	acpi_status status;
+
+	while ((pdev = pci_get_base_class(PCI_BASE_CLASS_DISPLAY, pdev))) {
+		if ((pdev->class != PCI_CLASS_DISPLAY_VGA << 8) &&
+		    (pdev->class != PCI_CLASS_DISPLAY_OTHER << 8))
+			continue;
+
+		dhandle = ACPI_HANDLE(&pdev->dev);
+		if (dhandle) {
+			status = acpi_get_handle(dhandle, "ATPX", &atpx_handle);
+			if (ACPI_SUCCESS(status)) {
+				pci_dev_put(pdev);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+#else
+#define atpx_present() false
+#endif
+
+
 struct pci_dev* get_bound_vga(struct pci_dev *pci)
 {
 	struct pci_dev *p;
@@ -74,7 +104,7 @@ void fchip_init_vga_switcheroo(struct fchip_azx *chip)
 		pci_dev_put(p);
 	}
 }
-static void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *fchip_azx)
+void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *fchip_azx)
 {
 	struct fchip_hda_intel* hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
 	struct hda_codec *codec;
@@ -85,7 +115,7 @@ static void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *fchip_azx)
 		}
 		/* reset the power save setup */
 		if (fchip_azx->running){
-			set_default_power_save(fchip_azx);
+			fchip_set_default_power_save(fchip_azx);
 		}
 	}
 }
@@ -116,7 +146,7 @@ static void fchip_vs_set_state(struct pci_dev *pci,
 		fchip_azx->disabled = disabled;
 		if (!disabled) {
 			printk(KERN_INFO "fchip: Start delayed initialization\n");
-			if (azx_probe_continue(fchip_azx) < 0){
+			if (fchip_probe_continue(fchip_azx) < 0){
 				printk(KERN_ERR "fchip: Initialization error\n");
 			}
 		}

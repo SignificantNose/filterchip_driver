@@ -17,6 +17,8 @@
 #define FCHIP_DMA_MASK_BITS 32
 
 
+#define AZX_MAX_CODECS		HDA_MAX_CODECS
+
 /* max number of SDs */
 /* ICH, ATI and VIA have 4 playback and 4 capture */
 #define ICH6_NUM_CAPTURE	4
@@ -360,7 +362,7 @@ struct hda_controller_ops {
 	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
 
 #define fchip_enter_link_reset(chip) \
-	snd_hdac_bus_enter_link_reset(azx_bus(chip))
+	snd_hdac_bus_enter_link_reset(azx_to_hda_bus(chip))
 
 #define fchip_get_snoop_type(fchip_azx) \
 	(((fchip_azx)->driver_caps & AZX_DCAPS_SNOOP_MASK) >> 10)
@@ -368,6 +370,18 @@ struct hda_controller_ops {
 #define fchip_snoop(fchip_azx) \
 	(!IS_ENABLED(CONFIG_X86) || fchip_azx->snoop)
 
+#define fchip_display_power(fchip_azx, enable) \
+	snd_hdac_display_power(azx_to_hda_bus(fchip_azx), HDA_CODEC_IDX_CONTROLLER, enable)
+
+#define fchip_has_pm_runtime(fchip_azx) \
+	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
+
 
 void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset);
 void fchip_stop_chip(struct fchip_azx* fchip_azx);
+
+void fchip_set_default_power_save(struct fchip_azx* fchip_azx);
+// not a fan of making this an interface, but for now:
+int fchip_probe_continue(struct fchip_azx *chip);
+
+void update_pci_config_byte(struct pci_dev *pci, unsigned int reg, unsigned char mask, unsigned char val);
