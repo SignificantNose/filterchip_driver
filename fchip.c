@@ -360,10 +360,59 @@ static void fchip_del_card_list(struct fchip_azx* fchip_azx)
 }
 
 static void fchip_remove(struct pci_dev *pci)
-{}
+{
+	struct snd_card* card = pci_get_drvdata(pci);
+	struct fchip_azx* fchip_azx;
+	struct fchip_hda_intel* hda;
+
+	if (card){
+		/* cancel the pending probing work */
+		fchip_azx = ((struct fchip*)(card->private_data))->azx_chip;
+		hda = container_of(fchip_azx, struct fchip_hda_intel, chip);
+		/* Below is an ugly workaround.
+		 * Both device_release_driver() and driver_probe_device()
+		 * take *both* the device's and its parent's lock before
+		 * calling the remove() and probe() callbacks.  The codec
+		 * probe takes the locks of both the codec itself and its
+		 * parent, i.e. the PCI controller dev.  Meanwhile, when
+		 * the PCI controller is unbound, it takes its lock, too
+		 * ==> ouch, a deadlock!
+		 * As a workaround, we unlock temporarily here the controller
+		 * device during cancel_work_sync() call.
+		 */
+		device_unlock(&pci->dev);
+		cancel_delayed_work_sync(&hda->probe_work);
+		device_lock(&pci->dev);
+
+		pci_set_drvdata(pci, NULL);
+		snd_card_free(card);
+	}
+}
+
+static void __fchip_shutdown_chip(struct fchip_azx* fchip_azx, bool skip_link_reset)
+{
+	fchip_stop_chip(fchip_azx);
+	if (!skip_link_reset){
+		fchip_enter_link_reset(fchip_azx);
+	}
+	fchip_clear_irq_pending(fchip_azx);
+	fchip_display_power(fchip_azx, false);
+}
 
 static void fchip_shutdown(struct pci_dev *pci)
-{}
+{
+	struct snd_card* card = pci_get_drvdata(pci);
+	struct fchip_azx* fchip_azx;
+
+	if (!card){
+		return;
+	}
+
+	fchip_azx = ((struct fchip*)(card->private_data))->azx_chip;
+	if (fchip_azx && fchip_azx->running){
+		__fchip_shutdown_chip(fchip_azx, true);
+	}
+}
 
 
 
@@ -887,11 +936,6 @@ static void fchip_probe_work(struct work_struct *work)
 	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
 
 
-
-static int fchip_disable_msi_reset_irq(struct fchip_azx *chip)
-{
-	return 0;
-}
 
 static int fchip_position_check(struct fchip_azx *chip, struct azx_dev *azx_dev)
 {

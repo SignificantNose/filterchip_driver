@@ -109,3 +109,21 @@ void fchip_clear_irq_pending(struct fchip_azx* fchip_azx)
 	}
 	spin_unlock_irq(&bus->reg_lock);
 }
+
+int fchip_disable_msi_reset_irq(struct fchip_azx* fchip_azx)
+{
+    struct hdac_bus *bus = azx_to_hda_bus(fchip_azx);
+	int err;
+
+	free_irq(bus->irq, fchip_azx);
+	bus->irq = -1;
+	fchip_azx->card->sync_irq = -1;
+	pci_disable_msi(fchip_azx->pci);
+	fchip_azx->msi = 0;
+	err = azx_acquire_irq(fchip_azx, 1);
+	if (err < 0){
+		return err;
+    }
+
+	return 0;
+}

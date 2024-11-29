@@ -356,6 +356,8 @@ struct hda_controller_ops {
 #define fchip_has_pm_runtime(fchip_azx) \
 	((fchip_azx)->driver_caps & AZX_DCAPS_PM_RUNTIME)
 
+#define fchip_enter_link_reset(chip) \
+	snd_hdac_bus_enter_link_reset(azx_bus(chip))
 
 #define fchip_get_snoop_type(fchip_azx) \
 	(((fchip_azx)->driver_caps & AZX_DCAPS_SNOOP_MASK) >> 10)
