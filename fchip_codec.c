@@ -82,14 +82,85 @@ int fchip_probe_codecs(struct fchip_azx* fchip_azx, unsigned int max_slots)
 	return 0;
 }
 
+// int coppy(struct snd_pcm_substream *substream, int channel,
+// 		    unsigned long pos, struct iov_iter *iter, unsigned long bytes)
+// {
+// 	printk(KERN_INFO "fchip: copy called\n");
+// 	return 0;	
+// }
+// snd_pcm_uframes_t ppointer(struct snd_pcm_substream *substream){
+// 	printk(KERN_INFO "fchip: pointer called\n");
+// 	return 0;
+// }
+
+// int my_ack(struct snd_pcm_substream *substream){
+// 	printk(KERN_INFO "fchip: ack called\n");
+// 	return 0;
+// }
+
 int fchip_codec_configure(struct fchip_azx* fchip_azx)
 {
-	struct hda_codec *codec, *next;
+	struct hda_codec* codec, * next;
+	struct hda_pcm* codec_pcm;
 	int success = 0;
+
+	static struct snd_pcm_ops myops = {};
 
 	list_for_each_codec(codec, &fchip_azx->bus) {
 		if (!snd_hda_codec_configure(codec)){
 			success++;
+		
+			list_for_each_entry(codec_pcm, &codec->pcm_list_head, list) {
+				for (int dir = 0; dir < 2; dir++) {
+					if (codec_pcm->stream[dir].substreams){
+						// snd_pcm_set_ops(codec_pcm->pcm, s, &azx_pcm_ops);
+						
+						// a dirty-dirty approach. the goal is to override one operation,
+						// while the ops field of the substream is a const field.
+						struct snd_pcm_str* stream = &codec_pcm->pcm->streams[dir];
+						struct snd_pcm_substream* substream;
+						for (substream = stream->substream; substream != NULL; substream = substream->next){
+							myops.pointer = substream->ops->pointer;
+							myops.open = substream->ops->open;
+							myops.close = substream->ops->close;
+							myops.hw_params = substream->ops->hw_params;
+							myops.hw_free = substream->ops->hw_free;
+							myops.prepare = substream->ops->prepare;
+							myops.trigger = substream->ops->trigger;
+							myops.pointer = substream->ops->pointer;
+							myops.get_time_info = substream->ops->get_time_info;
+							
+							// myops.copy = coppy;
+							// myops.pointer = ppointer;
+							// myops.ack = my_ack;
+
+
+							substream->ops = &myops;
+							printk(KERN_INFO "fchip: override occurred\n");
+							// substream->ops->copy = coppy;
+						}
+					}
+				}
+				// if (cpcm->pcm)
+				// 	continue; /* already attached */
+				// if (!cpcm->stream[0].substreams && !cpcm->stream[1].substreams)
+				// 	continue; /* no substreams assigned */
+
+				// dev = get_empty_pcm_device(bus, cpcm->pcm_type);
+				// if (dev < 0) {
+				// 	cpcm->device = SNDRV_PCM_INVALID_DEVICE;
+				// 	continue; /* no fatal error */
+				// }
+				// cpcm->device = dev;
+				// err =  snd_hda_attach_pcm_stream(bus, codec, cpcm);
+				// if (err < 0) {
+				// 	codec_err(codec,
+				// 		"cannot attach PCM stream %d for codec #%d\n",
+				// 		dev, codec->core.addr);
+				// 	continue; /* no fatal error */
+				// }
+			}
+			
 		}
 	}
 

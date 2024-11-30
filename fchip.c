@@ -1160,8 +1160,7 @@ int fchip_probe_continue(struct fchip_azx *fchip_azx)
 
 #ifdef CONFIG_SND_HDA_PATCH_LOADER
 	if (fchip_azx->fw) {
-		err = snd_hda_load_patch(&fchip_azx->bus, fchip_azx->fw->size,
-					 fchip_azx->fw->data);
+		err = snd_hda_load_patch(&fchip_azx->bus, fchip_azx->fw->size, fchip_azx->fw->data);
 		if (err < 0){
 			goto out_free;
 		}
