@@ -24,7 +24,7 @@ unsigned int fchip_get_pos_lpib(struct fchip_azx *chip, struct azx_dev *azx_dev)
 	return snd_hdac_stream_get_pos_lpib(azx_dev_to_hdac_stream(azx_dev));
 }
 
-static unsigned int fchip_get_pos_posbuf(struct fchip_azx *chip, struct azx_dev *azx_dev)
+unsigned int fchip_get_pos_posbuf(struct fchip_azx *chip, struct azx_dev *azx_dev)
 {
 	return snd_hdac_stream_get_pos_posbuf(azx_dev_to_hdac_stream(azx_dev));
 }
