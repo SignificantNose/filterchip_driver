@@ -338,6 +338,7 @@ struct hda_controller_ops {
 
 #define azx_to_hda_bus(fchip_azx)	(&(fchip_azx)->bus.core)
 #define azx_dev_to_hdac_stream(fchip_azx) (&(fchip_azx)->core)
+#define hdac_stream_to_azx_dev(s) container_of(s, struct azx_dev, core)
 
 #define fchip_writereg_l(fchip_azx, reg, value) \
 	snd_hdac_chip_writel(azx_to_hda_bus(fchip_azx), reg, value)

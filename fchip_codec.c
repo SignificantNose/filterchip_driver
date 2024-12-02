@@ -1,6 +1,6 @@
 #include "fchip_codec.h"
 #include "fchip_hda_bus.h"
-#include "fchip_posfix.h"
+#include "fchip_pcm.h"
 
 static inline struct hda_pcm_stream *
 to_hda_pcm_stream(struct snd_pcm_substream *substream)
@@ -111,54 +111,14 @@ int fchip_probe_codecs(struct fchip_azx* fchip_azx, unsigned int max_slots)
 // 	return 0;
 // }
 
-unsigned int my_get_position(struct fchip_azx *chip,
-			      struct azx_dev *azx_dev)
-{
-	struct snd_pcm_substream *substream = azx_dev->core.substream;
-	unsigned int pos;
-	int stream = substream->stream;
-	int delay = 0;
 
-	if (chip->get_position[stream])
-		pos = chip->get_position[stream](chip, azx_dev);
-	else /* use the position buffer as default */
-		pos = fchip_get_pos_posbuf(chip, azx_dev);
-
-	if (pos >= azx_dev->core.bufsize)
-		pos = 0;
-
-	if (substream->runtime) {
-		struct azx_pcm *apcm = snd_pcm_substream_chip(substream);
-		struct hda_pcm_stream *hinfo = to_hda_pcm_stream(substream);
-
-		if (chip->get_delay[stream])
-			delay += chip->get_delay[stream](chip, azx_dev, pos);
-		if (hinfo->ops.get_delay)
-			delay += hinfo->ops.get_delay(hinfo, apcm->codec,
-						      substream);
-		substream->runtime->delay = delay;
-	}
-
-	// trace_azx_get_position(chip, azx_dev, pos, delay);
-	return pos;
-}
-
-static snd_pcm_uframes_t my_pcm_pointer(struct snd_pcm_substream *substream)
-{
-	struct azx_pcm *apcm = snd_pcm_substream_chip(substream);
-	struct fchip_azx *chip = apcm->chip;
-	struct azx_dev *azx_dev = get_azx_dev(substream);
-	snd_pcm_uframes_t res = bytes_to_frames(substream->runtime,
-			       my_get_position(chip, azx_dev));
-	printk(KERN_INFO "fchip: frames: %lu\n", res);
-
-	return res;
-}
 
 int fchip_codec_configure(struct fchip_azx* fchip_azx)
 {
 	struct hda_codec* codec, * next;
 	struct hda_pcm* codec_pcm;
+	struct fchip_runtime_pr *runtime_pr;
+	// struct azx_dev *dev;
 	int success = 0;
 
 	static struct snd_pcm_ops myops = {};
@@ -187,7 +147,27 @@ int fchip_codec_configure(struct fchip_azx* fchip_azx)
 							myops.pointer = substream->ops->pointer;
 							myops.get_time_info = substream->ops->get_time_info;
 							
-							myops.pointer = my_pcm_pointer;
+							myops.open = fchip_pcm_open;
+							myops.pointer = fchip_pcm_pointer;
+							myops.close = fchip_pcm_close;
+							myops.hw_params = fchip_pcm_hw_params;
+							myops.hw_free = fchip_pcm_hw_free;
+							myops.prepare = fchip_pcm_prepare;
+							myops.trigger = fchip_pcm_trigger;
+							myops.get_time_info = fchip_pcm_get_time_info;
+
+							// runtime_pr = kzalloc(sizeof(struct fchip_runtime_pr), GFP_KERNEL);
+							// // dev = substream->runtime->private_data;
+							// printk(KERN_INFO "fchip: before copy\n");
+							// printk(KERN_INFO "fchip: address here\n");
+							// memcpy(runtime_pr, substream->runtime->private_data, sizeof(struct azx_dev));
+							// printk(KERN_INFO "fchip: after copy\n");
+							
+							// // allocate filter
+							// runtime_pr->filter_ptr = 0;
+							// substream->runtime->private_data = runtime_pr;
+							
+							
 							// myops.copy = coppy;
 							// myops.pointer = ppointer;
 							// myops.ack = my_ack;
