@@ -140,9 +140,15 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 	// printk(KERN_INFO "fchip: filter_ptr[%ul], sw_ptr[%ul], ftb(1)[%ul],ftb(s-f)[%ul]\n", filter_ptr, sw_ptr, ftb1, ftb2);
 	if (filter_ptr != sw_ptr) {
         if (filter_ptr < sw_ptr) {
+			// print_hex_dump_bytes("fchipp:", 0, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr));
+			print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr), false);
 			memset(dma_area+filter_ptr*ftb1, 0, frames_to_bytes(runtime, sw_ptr-filter_ptr));
         } else {
             unsigned int frames_to_end = buffer_size - filter_ptr;
+			// print_hex_dump_bytes("fchipp:", 0, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, frames_to_end));
+			// print_hex_dump_bytes("fchipp:", 0, dma_area, frames_to_bytes(runtime, sw_ptr));
+			print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, frames_to_end), false);
+			print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area, frames_to_bytes(runtime, sw_ptr), false);
 			memset(dma_area+filter_ptr*ftb1, 0, frames_to_bytes(runtime, frames_to_end));
 			memset(dma_area, 0, frames_to_bytes(runtime, sw_ptr));
         }
