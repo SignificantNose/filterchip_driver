@@ -116,6 +116,52 @@ static unsigned int fchip_pcm_get_position(struct fchip_azx *chip,
 	return pos;
 }
 
+inline void fchip_filter_process_region(snd_pcm_uframes_t total_frames, void *data_ptr, struct fchip_runtime_pr *pr){
+    snd_pcm_uframes_t frame;
+	int channel_idx;
+	int channels = pr->filter_channels;
+	int32_t *casted_data_ptr = (int32_t*)data_ptr; 
+	float raw;
+	float processed;
+	int32_t raw_i;
+	int32_t processed_i;
+	bool flag = true;
+	struct fchip_channel_filter *filters = pr->filters;
+
+
+
+    for(frame = 0; frame<total_frames; frame++){
+        
+
+        // data_ptr+=ftb1; 
+        // as we have a int16_t ptr, we need the ability 
+        // to iterate through interleaved channels: 
+        for(channel_idx = 0; channel_idx<channels; channel_idx++){
+            
+
+            raw_i = (*casted_data_ptr)>>8;					
+            raw = (raw_i)/8388608.0f; //  /32768.0f; 
+            processed = fchip_filter_process(&filters[channel_idx], raw);
+            // processed = raw;
+            // processed = raw/2;
+            processed_i = (int32_t)(processed*8388608.0f);
+            
+            
+            if(flag){
+                // printk(KERN_INFO "fchip: sample: %u, shifted: %u", s, s >> 8);
+                // printk(KERN_INFO "signs: sample: %d, shifted: %d", s, s >> 8);
+                printk(KERN_INFO "signs: raw: %d proc: %d\n",raw_i, processed_i);
+				flag = false;
+			}
+
+            *casted_data_ptr = (processed_i<<8)&0xFFFFFF00;
+
+            casted_data_ptr++;
+        }
+    }	
+}
+
+
 snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 {
 	struct azx_pcm *apcm = snd_pcm_substream_chip(substream);
@@ -125,20 +171,15 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 
 	snd_pcm_uframes_t sw_ptr = runtime->control->appl_ptr % runtime->buffer_size;
 	snd_pcm_uframes_t filter_ptr = runtime_pr->filter_ptr % runtime->buffer_size;
-	snd_pcm_uframes_t frame;
-	snd_pcm_uframes_t total_frames;
 	unsigned char *dma_area = runtime->dma_area;
 	// unsigned int frames_to_end;
 	unsigned int buffer_size;
     unsigned int frame_size;
 	ssize_t ftb1;
-	int16_t *data_ptr;
+	int32_t *data_ptr;
 	int channel_idx;
-	int channels = runtime_pr->filter_channels;
 	float raw;
-	float processed;
-	struct fchip_channel_filter *filters = runtime_pr->filters;
-	
+	float processed;	
 	snd_pcm_uframes_t res;
 
 	
@@ -156,28 +197,18 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 	filter_ptr = runtime_pr->filter_ptr % runtime->buffer_size;
 	dma_area = runtime->dma_area;
 
+	bool flag = true;
+
 	// considering the frames are stored, we can assume that we 
 	// do not have to keep track of the previously processed index
 	if (filter_ptr != sw_ptr) {
         if (filter_ptr < sw_ptr) {
-			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr)<4?frames_to_bytes(runtime, sw_ptr-filter_ptr):4, false);
-			total_frames = sw_ptr-filter_ptr;
-			data_ptr = (int16_t*)(dma_area+filter_ptr*ftb1);
-			for(frame = 0; frame<total_frames; frame++){
-
-				// data_ptr+=ftb1; 
-				// as we have a int16_t ptr, we need the ability 
-				// to iterate through interleaved channels: 
-				for(channel_idx = 0; channel_idx<channels; channel_idx++){
+			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr)<16?frames_to_bytes(runtime, sw_ptr-filter_ptr):16, false);
+			fchip_filter_process_region(sw_ptr-filter_ptr, dma_area+filter_ptr*ftb1, runtime_pr);
 					
-					raw = le16_to_cpu(*data_ptr)/32768.0f;
-					processed = fchip_filter_process(&filters[channel_idx], raw);
-					*data_ptr = cpu_to_le16((int16_t)(processed*32768.0f));
-
-					data_ptr++;
-				}
-			}		
 			// frames_to_bytes(runtime, sw_ptr-filter_ptr)
+			// print_hex_dump(KERN_INFO, "fffff: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr)<16?frames_to_bytes(runtime, sw_ptr-filter_ptr):16, false);
+
 
 
 			// memset(dma_area+filter_ptr*ftb1, 0, frames_to_bytes(runtime, sw_ptr-filter_ptr));
@@ -185,40 +216,8 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, frames_to_end)<4?frames_to_bytes(runtime, frames_to_end):4, false);
 			
 			// total_frames = sw_ptr-filter_ptr;
-            total_frames = buffer_size - filter_ptr;
-			data_ptr = (int16_t*)(dma_area+filter_ptr*ftb1);
-			for(frame = 0; frame<total_frames; frame++){
-
-				// data_ptr+=ftb1; 
-				// as we have a int16_t ptr, we need the ability 
-				// to iterate through interleaved channels: 
-				for(channel_idx = 0; channel_idx<channels; channel_idx++){
-					
-					raw = le16_to_cpu(*data_ptr)/32768.0f;
-					processed = fchip_filter_process(&filters[channel_idx], raw);
-					*data_ptr = cpu_to_le16((int16_t)(processed*32768.0f));
-
-					data_ptr++;
-				}
-			}
-
-            total_frames = sw_ptr;
-			data_ptr = (int16_t*)(dma_area);
-			for(frame = 0; frame<total_frames; frame++){
-
-				// data_ptr+=ftb1; 
-				// as we have a int16_t ptr, we need the ability 
-				// to iterate through interleaved channels: 
-				for(channel_idx = 0; channel_idx<channels; channel_idx++){
-					
-					raw = le16_to_cpu(*data_ptr)/32768.0f;
-					processed = fchip_filter_process(&filters[channel_idx], raw);
-					*data_ptr = cpu_to_le16((int16_t)(processed*32768.0f));
-
-					data_ptr++;
-				}
-			}
-
+			fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*ftb1, runtime_pr);
+			fchip_filter_process_region(sw_ptr, dma_area+filter_ptr*ftb1, runtime_pr);
 			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area, frames_to_bytes(runtime, sw_ptr), false);
 			
 			// memset(dma_area+filter_ptr*ftb1, 0, frames_to_bytes(runtime, frames_to_end));
@@ -265,7 +264,7 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 	for(int i=0; i<channel_count; i++){
 		// init cutoff and filter types here once, do not change 
 		// them later (pass the corresponding parameters)
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_LOWPASS, 48000, 1000);
+		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_LOWPASS, 48000, 300);
 	}
 	runtime->private_data = runtime_pr;
 	// runtime->private_data = azx_dev;
@@ -451,10 +450,6 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 	snd_hdac_stream_reset(azx_dev_to_hdac_stream(azx_dev));
 	bits = snd_hdac_stream_format_bits(runtime->format, SNDRV_PCM_SUBFORMAT_STD, hinfo->maxbps);
 
-	runtime_pr->filter_channels = runtime->channels;
-	for(int i=0; i<runtime_pr->filter_channels; i++){
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FPARAM_FILTERTYPE_NOCHANGE, runtime->rate, FCHIP_FPARAM_CUTOFF_NOCHANGE);
-	}
 	format_val = snd_hdac_spdif_stream_format(runtime->channels, bits, runtime->rate, ctls);
 	if (!format_val) {
 		printk(KERN_ERR "fchip: invalid format_val, rate=%d, ch=%d, format=%d\n",
@@ -462,6 +457,12 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 		err = -EINVAL;
 		goto unlock;
 	}
+
+	runtime_pr->filter_channels = runtime->channels;
+	for(int i=0; i<runtime_pr->filter_channels; i++){
+		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FPARAM_FILTERTYPE_NOCHANGE, runtime->rate, FCHIP_FPARAM_CUTOFF_NOCHANGE);
+	}
+	printk(KERN_INFO "fchip: bits:%d channels:%d rate:%d fmt_val:%d\n", bits, runtime->channels, runtime->rate, format_val);
 
 	err = snd_hdac_stream_set_params(azx_dev_to_hdac_stream(azx_dev), format_val);
 	if (err < 0)

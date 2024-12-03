@@ -1,4 +1,5 @@
 #include <linux/slab.h>
+#include "fchip_pcm.h"
 #include "fchip_filter.h"
 
 #define M_PI 3.14159265358979323846f
