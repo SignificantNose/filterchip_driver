@@ -144,3 +144,10 @@ inline fchip_float_t fchip_filter_process(
 
     return filter->processed[0];
 }
+
+void fchip_filter_clear_buffers(struct fchip_channel_filter *filter){
+    for(int i = 0; i < 3; i++){
+        filter->raw[i] = 0;
+        filter->processed[i] = 0;
+    }   
+}
