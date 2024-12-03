@@ -4,7 +4,6 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 
-#define FILTERCHIP_PCM_BUFFER_SIZE (64*1024)
 
 #define dsp_lock(dev)		snd_hdac_dsp_lock(azx_dev_to_hdac_stream(dev))
 #define dsp_unlock(dev)		snd_hdac_dsp_unlock(azx_dev_to_hdac_stream(dev))

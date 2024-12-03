@@ -185,6 +185,34 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 	return res;
 }
 
+static struct fchip_runtime_pr *fchip_runtime_private_init(struct azx_dev *azx_dev, int channel_count){
+	
+	struct fchip_runtime_pr *runtime_pr = kmalloc(sizeof(*runtime_pr), GFP_KERNEL);
+	if(!runtime_pr){
+		return NULL;
+	}
+	runtime_pr->dev = azx_dev;
+	runtime_pr->filter_ptr = 0;
+	runtime_pr->filter_channels = 0;
+	runtime_pr->filter_count = channel_count;
+	runtime_pr->filters = kmalloc(sizeof(struct fchip_channel_filter)*channel_count, GFP_KERNEL); 
+	if(!runtime_pr->filters){
+		kfree(runtime_pr);
+		return NULL;
+	}
+
+	for(int i=0; i<channel_count; i++){
+		// init cutoff and filter types here once, do not change 
+		// them later (pass the corresponding parameters)
+		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_HIPASS, 48000, 300);
+	}
+	return runtime_pr;
+}
+
+static void fchip_runtime_private_free(struct fchip_runtime_pr *runtime_pr){
+	kfree(runtime_pr->filters);
+	kfree(runtime_pr);
+}
 
 int fchip_pcm_open(struct snd_pcm_substream *substream)
 {
@@ -208,21 +236,12 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 		goto unlock;
 	}
 
-	channel_count = hinfo->channels_max;
-    runtime_pr = kmalloc(sizeof(*runtime_pr), GFP_KERNEL);
-    // memcpy(&runtime_pr->dev, azx_dev, sizeof(*azx_dev));
-	runtime_pr->dev = azx_dev;
-	runtime_pr->filter_ptr = 0;
-	runtime_pr->filter_channels = 0;
-	runtime_pr->filter_count = channel_count;
-	runtime_pr->filters = kmalloc(sizeof(struct fchip_channel_filter)*channel_count, GFP_KERNEL); 
-	for(int i=0; i<channel_count; i++){
-		// init cutoff and filter types here once, do not change 
-		// them later (pass the corresponding parameters)
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_MUTE, 48000, 300);
+	runtime_pr = fchip_runtime_private_init(azx_dev, channel_count = hinfo->channels_max);
+	if(!runtime_pr){
+		err = -ENOMEM;
+		goto unlock;
 	}
 	runtime->private_data = runtime_pr;
-	// runtime->private_data = azx_dev;
 
 	runtime->hw = fchip_pcm_hw;
 	if (fchip_azx->gts_present){
@@ -312,21 +331,18 @@ int fchip_pcm_close(struct snd_pcm_substream *substream)
 	struct fchip_azx *fchip_azx = apcm->chip;
 	struct fchip_runtime_pr *runtime_pr = substream->runtime->private_data;
 
-	printk(KERN_INFO "fchip: close called\n");
+	printk(KERN_DEBUG "fchip: close called\n");
 
 	mutex_lock(&fchip_azx->open_mutex);
 	fchip_release_device(runtime_pr->dev);
 
-	// runtime->private_data = runtime_pr;
-	// fchip_release_device(substream->runtime->private_data);
     // de-allocate filter
 	if (hinfo->ops.close){
 		hinfo->ops.close(hinfo, apcm->codec, substream);
     }
 	snd_hda_power_down(apcm->codec);
-    kfree(runtime_pr->filters);
-	kfree(runtime_pr);
-	
+	fchip_runtime_private_free(runtime_pr);
+
 	mutex_unlock(&fchip_azx->open_mutex);
 	snd_hda_codec_pcm_put(apcm->info);
 	return 0;
@@ -381,6 +397,17 @@ int fchip_pcm_hw_free(struct snd_pcm_substream *substream)
 	return 0;
 }
 
+static void fchip_filter_prepare(struct fchip_runtime_pr *runtime_pr, int bits, int channels, int sample_rate){
+	runtime_pr->bit_depth = bits;
+	runtime_pr->bytes_per_sample = 4; // weak one
+	runtime_pr->bit_shift = runtime_pr->bytes_per_sample<<3 - runtime_pr->bit_depth;
+	// signed only; hda spec does not say anything about unsigned -> bit_depth-1
+	runtime_pr->sample_max_value = (runtime_pr->bit_depth-1)<<3; 
+	runtime_pr->filter_channels = channels;
+	for(int i=0; i<runtime_pr->filter_channels; i++){
+		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FPARAM_FILTERTYPE_NOCHANGE, sample_rate, FCHIP_FPARAM_CUTOFF_NOCHANGE);
+	}
+}
 
 int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 {
@@ -413,16 +440,8 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 		goto unlock;
 	}
 
-	runtime_pr->bit_depth = bits;
-	runtime_pr->bytes_per_sample = 4; // weak one
-	runtime_pr->bit_shift = runtime_pr->bytes_per_sample<<3 - runtime_pr->bit_depth;
-	// signed only; hda spec does not say anything about unsigned -> bit_depth-1
-	runtime_pr->sample_max_value = (runtime_pr->bit_depth-1)<<3; 
-	runtime_pr->filter_channels = runtime->channels;
-	for(int i=0; i<runtime_pr->filter_channels; i++){
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FPARAM_FILTERTYPE_NOCHANGE, runtime->rate, FCHIP_FPARAM_CUTOFF_NOCHANGE);
-	}
-	printk(KERN_INFO "fchip: bits:%d channels:%d rate:%d fmt_val:%d\n", bits, runtime->channels, runtime->rate, format_val);
+	fchip_filter_prepare(runtime_pr, bits, runtime->channels, runtime->rate);
+	printk(KERN_DEBUG "fchip: bits:%d channels:%d rate:%d fmt_val:%d\n", bits, runtime->channels, runtime->rate, format_val);
 
 	err = snd_hdac_stream_set_params(azx_dev_to_hdac_stream(azx_dev), format_val);
 	if (err < 0)
