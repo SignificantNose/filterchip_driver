@@ -2,6 +2,17 @@
 #include "fchip_posfix.h"
 #include "fchip.h"
 
+// welp, only int. what a bummer.
+static int filter_type = FCHIP_FILTER_NONE;
+static int filter_cutoff_freq = 1000;
+
+module_param(filter_type, int, 0444);
+MODULE_PARM_DESC(filter_type, "Filter function type "
+    "(0 = No filtering, 1 = Lowpass, 2 = Hipass, 3 = Bandwidth, 4 = Mute)");
+
+module_param(filter_cutoff_freq, int, 0444);
+MODULE_PARM_DESC(filter_cutoff_freq, "Filter cutoff frequency");
+
 
 static const struct snd_pcm_hardware fchip_pcm_hw = {
 	.info =			(SNDRV_PCM_INFO_MMAP |
@@ -204,7 +215,7 @@ static struct fchip_runtime_pr *fchip_runtime_private_init(struct azx_dev *azx_d
 	for(int i=0; i<channel_count; i++){
 		// init cutoff and filter types here once, do not change 
 		// them later (pass the corresponding parameters)
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_HIPASS, 48000, 300);
+		fchip_filter_change_params(&runtime_pr->filters[i], filter_type, 48000, filter_cutoff_freq);
 	}
 	return runtime_pr;
 }
