@@ -1,13 +1,13 @@
 #include <linux/slab.h>
 #include "fchip_filter.h"
 
-#define M_PI 3.14159265358979323846
-#define M_SQRT2 1.414213562373095
+#define M_PI 3.14159265358979323846f
+#define M_SQRT2 1.414213562373095f
 
-static double fchip_filter_transform_frequency(double sample_rate, double freq){
+static fchip_float_t fchip_filter_transform_frequency(fchip_float_t sample_rate, fchip_float_t freq){
     // the original filter had a tan function here.
     // an approximation is used here: tan(x) ~ x + (x^3)/3 
-    double f = freq * M_PI / sample_rate;
+    fchip_float_t f = freq * M_PI / sample_rate;
     return f + (f * f * f) / 3;
 }
 
@@ -15,9 +15,9 @@ static void fchip_calculate_convolution_table(
     struct fchip_channel_filter *filter
 )
 {
-    double w;
-    double d, w1, w2, w0sqr, wd; // for bandpass filter
-    double a0, a1, a2, b0, b1, b2;
+    fchip_float_t w;
+    fchip_float_t d, w1, w2, w0sqr, wd; // for bandpass filter
+    fchip_float_t a0, a1, a2, b0, b1, b2;
     switch(filter->filter_type){
         case FCHIP_FILTER_LOWPASS:
             w = fchip_filter_transform_frequency(filter->sample_rate, filter->cutoff_freq);
@@ -84,7 +84,7 @@ static void fchip_calculate_convolution_table(
     filter->coeffs.a2 = a2 / a0;
 }
 
-struct fchip_channel_filter* fchip_filter_create(enum fchip_filter_type filter_type, int sample_rate, double cutoff_freq)
+struct fchip_channel_filter* fchip_filter_create(enum fchip_filter_type filter_type, int sample_rate, fchip_float_t cutoff_freq)
 {
     struct fchip_channel_filter *filter = kzalloc(sizeof(struct fchip_channel_filter), GFP_KERNEL);
     filter->filter_type = filter_type;
@@ -97,8 +97,8 @@ struct fchip_channel_filter* fchip_filter_create(enum fchip_filter_type filter_t
 void fchip_filter_change_params(
     struct fchip_channel_filter *filter, 
     enum fchip_filter_type filter_type, 
-    double sample_rate,
-    double cutoff_freq
+    fchip_float_t sample_rate,
+    fchip_float_t cutoff_freq
     )
 {
     if (filter_type != FCHIP_FPARAM_FILTERTYPE_NOCHANGE){
@@ -121,9 +121,9 @@ void fchip_filter_change_params(
 }
 
 
-inline double fchip_filter_process(
+inline fchip_float_t fchip_filter_process(
     struct fchip_channel_filter* filter, 
-    double sample
+    fchip_float_t sample
 )
 {
     filter->raw[2] = filter->raw[1];
