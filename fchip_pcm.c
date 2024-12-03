@@ -117,18 +117,19 @@ static unsigned int fchip_pcm_get_position(struct fchip_azx *chip,
 }
 
 inline void fchip_filter_process_region(snd_pcm_uframes_t total_frames, void *data_ptr, struct fchip_runtime_pr *pr){
-    snd_pcm_uframes_t frame;
-	int channel_idx;
 	int channels = pr->filter_channels;
 	int32_t *casted_data_ptr = (int32_t*)data_ptr; 
+	struct fchip_channel_filter *filters = pr->filters;
+	int bit_shift = pr->bit_shift;
+	int sample_max_value = pr->sample_max_value;
+	
+    snd_pcm_uframes_t frame;
+	int channel_idx;
+
 	float raw;
 	float processed;
 	int32_t raw_i;
 	int32_t processed_i;
-	bool flag = true;
-	struct fchip_channel_filter *filters = pr->filters;
-	int bit_shift = pr->bit_shift;
-	int sample_max_value = pr->sample_max_value;
 
 
     for(frame = 0; frame<total_frames; frame++){
@@ -136,18 +137,11 @@ inline void fchip_filter_process_region(snd_pcm_uframes_t total_frames, void *da
 
             raw_i = (*casted_data_ptr)>>bit_shift;
             raw = (raw_i*1.0f)/sample_max_value; 
+
             processed = fchip_filter_process(&filters[channel_idx], raw);
             processed_i = (int32_t)(processed*sample_max_value);
             
-            // if(flag){
-            //     // printk(KERN_INFO "fchip: sample: %u, shifted: %u", s, s >> 8);
-            //     // printk(KERN_INFO "signs: sample: %d, shifted: %d", s, s >> 8);
-            //     // printk(KERN_INFO "signs: raw: %d proc: %d\n",raw_i, processed_i);
-			// 	flag = false;
-			// }
-
-            *casted_data_ptr = (processed_i<<bit_shift); // &0xFFFFFF00;
-
+            *casted_data_ptr = (processed_i<<bit_shift); 
             casted_data_ptr++;
         }
     }	
@@ -164,56 +158,26 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 	snd_pcm_uframes_t sw_ptr = runtime->control->appl_ptr % runtime->buffer_size;
 	snd_pcm_uframes_t filter_ptr = runtime_pr->filter_ptr % runtime->buffer_size;
 	unsigned char *dma_area = runtime->dma_area;
-	// unsigned int frames_to_end;
 	unsigned int buffer_size;
-    unsigned int frame_size;
-	ssize_t ftb1;
-	int32_t *data_ptr;
-	int channel_idx;
-	float raw;
-	float processed;	
+	ssize_t frame_in_bytes;
 	snd_pcm_uframes_t res;
 
 	
-	buffer_size = runtime->buffer_size;
-    frame_size = runtime->frame_bits / 8;
-
 	res = bytes_to_frames(runtime, fchip_pcm_get_position(chip, runtime_pr->dev));
-	// ssize_t ftb1 = frames_to_bytes(runtime, 1);
-	// ssize_t ftb2 = frames_to_bytes(runtime, sw_ptr-filter_ptr);
-	// printk(KERN_INFO "fchip: filter_ptr[%ul], sw_ptr[%ul], ftb(1)[%ul],ftb(s-f)[%ul]\n", filter_ptr, sw_ptr, ftb1, ftb2);
-
-	ftb1 = runtime->frame_bits / 8;
+	buffer_size = runtime->buffer_size;
+	frame_in_bytes = runtime->frame_bits / 8;
 
 	sw_ptr = runtime->control->appl_ptr % runtime->buffer_size;
 	filter_ptr = runtime_pr->filter_ptr % runtime->buffer_size;
 	dma_area = runtime->dma_area;
 
-	bool flag = true;
-
-	// considering the frames are stored, we can assume that we 
-	// do not have to keep track of the previously processed index
 	if (filter_ptr != sw_ptr) {
         if (filter_ptr < sw_ptr) {
-			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr)<16?frames_to_bytes(runtime, sw_ptr-filter_ptr):16, false);
-			fchip_filter_process_region(sw_ptr-filter_ptr, dma_area+filter_ptr*ftb1, runtime_pr);
-					
-			// frames_to_bytes(runtime, sw_ptr-filter_ptr)
-			// print_hex_dump(KERN_INFO, "fffff: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, sw_ptr-filter_ptr)<16?frames_to_bytes(runtime, sw_ptr-filter_ptr):16, false);
-
-
-
-			// memset(dma_area+filter_ptr*ftb1, 0, frames_to_bytes(runtime, sw_ptr-filter_ptr));
-        } else {
-			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area+filter_ptr*ftb1, frames_to_bytes(runtime, frames_to_end)<4?frames_to_bytes(runtime, frames_to_end):4, false);
-			
-			// total_frames = sw_ptr-filter_ptr;
-			fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*ftb1, runtime_pr);
-			fchip_filter_process_region(sw_ptr, dma_area+filter_ptr*ftb1, runtime_pr);
-			// print_hex_dump(KERN_INFO, "fchip: ", 0, 16, 1, dma_area, frames_to_bytes(runtime, sw_ptr), false);
-			
-			// memset(dma_area+filter_ptr*ftb1, 0, frames_to_bytes(runtime, frames_to_end));
-			// memset(dma_area, 0, frames_to_bytes(runtime, sw_ptr));
+			fchip_filter_process_region(sw_ptr-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
+		} 
+		else {
+			fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
+			fchip_filter_process_region(sw_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
         }
         runtime_pr->filter_ptr = sw_ptr;
     }
