@@ -38,6 +38,9 @@ static bool ctl_dev_id = IS_ENABLED(CONFIG_SND_HDA_CTL_DEV_ID) ? 1 : 0;
 static int power_save = CONFIG_SND_HDA_POWER_SAVE_DEFAULT;
 
 
+module_param(enable_msi, bint, 0444);
+MODULE_PARM_DESC(enable_msi, "Enable Message Signaled Interrupt (MSI)");
+
 
 static DEFINE_MUTEX(card_list_lock);
 static LIST_HEAD(card_list);
