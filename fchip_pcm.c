@@ -11,8 +11,26 @@ MODULE_PARM_DESC(filter_type, "Filter function type "
     "(0 = No filtering, 1 = Lowpass, 2 = Hipass, 3 = Bandwidth, 4 = Mute)");
 
 module_param(filter_cutoff_freq, int, 0444);
-MODULE_PARM_DESC(filter_cutoff_freq, "Filter cutoff frequency");
+MODULE_PARM_DESC(filter_cutoff_freq, "Filter cutoff frequency (in Hz)");
 
+
+void fchip_pcm_validate_filter_params(void){
+	if(
+		!(
+			filter_type>=FCHIP_FILTER_NONE && 
+			filter_type<=FCHIP_FILTER_MUTE
+		)
+	)
+	{
+		printk(KERN_WARNING "fchip: invalid filter type specified, setting default value: FCHIP_FILTER_NONE\n");
+		filter_type = FCHIP_FILTER_NONE;
+	}
+
+	if(filter_cutoff_freq < 0){
+		printk(KERN_WARNING "fchip: invalid filter cutoff frequency specified, defaulting to 1000 Hz\n");
+		filter_cutoff_freq = 1000;
+	}
+}
 
 static const struct snd_pcm_hardware fchip_pcm_hw = {
 	.info =			(SNDRV_PCM_INFO_MMAP |

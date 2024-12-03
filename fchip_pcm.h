@@ -38,6 +38,8 @@ struct fchip_runtime_pr
 };
 
 
+void fchip_pcm_validate_filter_params(void);
+
 int fchip_pcm_open(struct snd_pcm_substream *substream);
 int fchip_pcm_close(struct snd_pcm_substream *substream);
 snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream);

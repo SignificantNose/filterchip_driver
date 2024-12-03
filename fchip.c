@@ -1741,7 +1741,8 @@ static struct pci_driver driver = {
 
 static int __init alsa_card_filterchip_init(void){
     printk(KERN_DEBUG "fchip: init called\n");
-    return pci_register_driver(&driver);
+	fchip_pcm_validate_filter_params();
+	return pci_register_driver(&driver);
 }
 
 static void __exit alsa_card_filterchip_exit(void){
