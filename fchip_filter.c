@@ -84,7 +84,7 @@ static void fchip_calculate_convolution_table(
     filter->coeffs.a2 = a2 / a0;
 }
 
-struct fchip_channel_filter* fchip_filter_init(enum fchip_filter_type filter_type, int sample_rate, double cutoff_freq)
+struct fchip_channel_filter* fchip_filter_create(enum fchip_filter_type filter_type, int sample_rate, double cutoff_freq)
 {
     struct fchip_channel_filter *filter = kzalloc(sizeof(struct fchip_channel_filter), GFP_KERNEL);
     filter->filter_type = filter_type;
