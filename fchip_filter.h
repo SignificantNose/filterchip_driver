@@ -11,6 +11,7 @@ enum fchip_filter_type{
     FCHIP_FILTER_LOWPASS,
     FCHIP_FILTER_HIPASS,
     FCHIP_FILTER_BANDPASS,
+    FCHIP_FILTER_MUTE
 };
 
 // a biquad convolution table is used 

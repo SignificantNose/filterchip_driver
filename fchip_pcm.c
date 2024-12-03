@@ -219,7 +219,7 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 	for(int i=0; i<channel_count; i++){
 		// init cutoff and filter types here once, do not change 
 		// them later (pass the corresponding parameters)
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_HIPASS, 48000, 300);
+		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_MUTE, 48000, 300);
 	}
 	runtime->private_data = runtime_pr;
 	// runtime->private_data = azx_dev;

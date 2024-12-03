@@ -65,6 +65,15 @@ static void fchip_calculate_convolution_table(
             b1 = 0;
             b2 = wd;
             break;
+        case FCHIP_FILTER_MUTE:
+            b0 = 0;
+            b1 = 0;
+            b2 = 0;
+            
+            a0 = 1;
+            a1 = 0;
+            a2 = 0;
+            break;
 
         // case FCHIP_FILTER_NONE:
         default:
