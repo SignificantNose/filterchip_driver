@@ -1,5 +1,6 @@
 #pragma once
 #include "fchip.h"
+#include "fchip_filter.h"
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 
@@ -21,8 +22,12 @@ struct azx_pcm {
 struct fchip_runtime_pr
 {
     struct azx_dev *dev;
+	
     snd_pcm_uframes_t filter_ptr;
-    int filter;
+    struct fchip_channel_filter *filters; 
+    int filter_channels;    // amount of actually present filters
+	int filter_count;       // max filters available
+	int filter_idx;
 };
 
 
