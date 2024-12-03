@@ -27,7 +27,15 @@ struct fchip_runtime_pr
     struct fchip_channel_filter *filters; 
     int filter_channels;    // amount of actually present filters
 	int filter_count;       // max filters available
-	int filter_idx;
+
+	int bytes_per_sample;
+	int bit_depth;
+	
+	// bit shift describes the amount of excessive bits 
+	// that do not possess any value (must be zero, or 
+	// sign-extended in the conversion process) 
+	int bit_shift; 			// aggregating field; equal to bytes_for<<3-bit_depth
+	int sample_max_value; 	// aggregating field; equal to (bit_depth-1)<<3;
 };
 
 

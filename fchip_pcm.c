@@ -127,34 +127,26 @@ inline void fchip_filter_process_region(snd_pcm_uframes_t total_frames, void *da
 	int32_t processed_i;
 	bool flag = true;
 	struct fchip_channel_filter *filters = pr->filters;
-
+	int bit_shift = pr->bit_shift;
+	int sample_max_value = pr->sample_max_value;
 
 
     for(frame = 0; frame<total_frames; frame++){
-        
-
-        // data_ptr+=ftb1; 
-        // as we have a int16_t ptr, we need the ability 
-        // to iterate through interleaved channels: 
         for(channel_idx = 0; channel_idx<channels; channel_idx++){
-            
 
-            raw_i = (*casted_data_ptr)>>8;					
-            raw = (raw_i)/8388608.0f; //  /32768.0f; 
+            raw_i = (*casted_data_ptr)>>bit_shift;
+            raw = (raw_i*1.0f)/sample_max_value; 
             processed = fchip_filter_process(&filters[channel_idx], raw);
-            // processed = raw;
-            // processed = raw/2;
-            processed_i = (int32_t)(processed*8388608.0f);
+            processed_i = (int32_t)(processed*sample_max_value);
             
-            
-            if(flag){
-                // printk(KERN_INFO "fchip: sample: %u, shifted: %u", s, s >> 8);
-                // printk(KERN_INFO "signs: sample: %d, shifted: %d", s, s >> 8);
-                printk(KERN_INFO "signs: raw: %d proc: %d\n",raw_i, processed_i);
-				flag = false;
-			}
+            // if(flag){
+            //     // printk(KERN_INFO "fchip: sample: %u, shifted: %u", s, s >> 8);
+            //     // printk(KERN_INFO "signs: sample: %d, shifted: %d", s, s >> 8);
+            //     // printk(KERN_INFO "signs: raw: %d proc: %d\n",raw_i, processed_i);
+			// 	flag = false;
+			// }
 
-            *casted_data_ptr = (processed_i<<8)&0xFFFFFF00;
+            *casted_data_ptr = (processed_i<<bit_shift); // &0xFFFFFF00;
 
             casted_data_ptr++;
         }
@@ -257,14 +249,13 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
     // memcpy(&runtime_pr->dev, azx_dev, sizeof(*azx_dev));
 	runtime_pr->dev = azx_dev;
 	runtime_pr->filter_ptr = 0;
-	runtime_pr->filter_idx = 0;
 	runtime_pr->filter_channels = 0;
 	runtime_pr->filter_count = channel_count;
 	runtime_pr->filters = kmalloc(sizeof(struct fchip_channel_filter)*channel_count, GFP_KERNEL); 
 	for(int i=0; i<channel_count; i++){
 		// init cutoff and filter types here once, do not change 
 		// them later (pass the corresponding parameters)
-		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_LOWPASS, 48000, 300);
+		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FILTER_HIPASS, 48000, 300);
 	}
 	runtime->private_data = runtime_pr;
 	// runtime->private_data = azx_dev;
@@ -458,6 +449,11 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 		goto unlock;
 	}
 
+	runtime_pr->bit_depth = bits;
+	runtime_pr->bytes_per_sample = 4; // weak one
+	runtime_pr->bit_shift = runtime_pr->bytes_per_sample<<3 - runtime_pr->bit_depth;
+	// signed only; hda spec does not say anything about unsigned -> bit_depth-1
+	runtime_pr->sample_max_value = (runtime_pr->bit_depth-1)<<3; 
 	runtime_pr->filter_channels = runtime->channels;
 	for(int i=0; i<runtime_pr->filter_channels; i++){
 		fchip_filter_change_params(&runtime_pr->filters[i], FCHIP_FPARAM_FILTERTYPE_NOCHANGE, runtime->rate, FCHIP_FPARAM_CUTOFF_NOCHANGE);
