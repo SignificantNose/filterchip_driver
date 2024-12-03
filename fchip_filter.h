@@ -35,7 +35,7 @@ struct fchip_channel_filter
 };
 
 
-struct fchip_channel_filter* fchip_filter_init(enum fchip_filter_type type, int sample_rate, double cutoff_freq);
+struct fchip_channel_filter* fchip_filter_create(enum fchip_filter_type filter_type, int sample_rate, double cutoff_freq);
 void fchip_filter_change_params(struct fchip_channel_filter *filter, enum fchip_filter_type filter_type, double sample_rate, double cutoff_freq);
 
 inline double fchip_filter_process(struct fchip_channel_filter* filter, double sample);
