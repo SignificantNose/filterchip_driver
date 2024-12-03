@@ -42,7 +42,7 @@ static void fchip_calculate_convolution_table(
             
             b0 = 1;
             b1 = -2;
-            b2 = -1;
+            b2 = 1;
             break;
 
         case FCHIP_FILTER_BANDPASS:
