@@ -7,7 +7,7 @@ static void stream_update(struct hdac_bus *bus, struct hdac_stream *s)
 	struct fchip_azx* fchip_azx = hdac_bus_to_azx(bus);
 	struct azx_dev *azx_dev = hdac_stream_to_azx_dev(s);
 
-	/* check whether this IRQ is really acceptable */
+	// check whether this IRQ is really acceptable
 	if (!fchip_azx->ops->position_check ||
 	    fchip_azx->ops->position_check(fchip_azx, azx_dev)) 
     {
@@ -17,7 +17,7 @@ static void stream_update(struct hdac_bus *bus, struct hdac_stream *s)
 	}
 }
 
-irqreturn_t fchip_interrupt(int irq, void *dev_id)
+static irqreturn_t fchip_interrupt(int irq, void *dev_id)
 {
     struct fchip_azx* fchip_azx = dev_id;
 	struct hdac_bus* bus = azx_to_hda_bus(fchip_azx);
@@ -51,14 +51,12 @@ irqreturn_t fchip_interrupt(int irq, void *dev_id)
 
 		status = fchip_readreg_b(fchip_azx, RIRBSTS);
 		if (status & RIRB_INT_MASK) {
-			/*
-			 * Clearing the interrupt status here ensures that no
-			 * interrupt gets masked after the RIRB wp is read in
-			 * snd_hdac_bus_update_rirb. This avoids a possible
-			 * race condition where codec response in RIRB may
-			 * remain unserviced by IRQ, eventually falling back
-			 * to polling mode in fchip_rirb_get_response.
-			 */
+			// Clearing the interrupt status here ensures that no
+			// interrupt gets masked after the RIRB wp is read in
+			// snd_hdac_bus_update_rirb. This avoids a possible
+			// race condition where codec response in RIRB may
+			// remain unserviced by IRQ, eventually falling back
+			// to polling mode in fchip_rirb_get_response.
 			fchip_writereg_b(fchip_azx, RIRBSTS, RIRB_INT_MASK);
 			active = true;
 			if (status & RIRB_INT_RESPONSE) {

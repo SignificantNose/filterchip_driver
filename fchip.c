@@ -75,7 +75,7 @@ static void fchip_del_card_list(struct fchip_azx* fchip_azx)
 void fchip_init_chip(struct fchip_azx* fchip_azx, bool full_reset)
 {
 	if (snd_hdac_bus_init_chip(azx_to_hda_bus(fchip_azx), full_reset)) {
-		/* correct RINTCNT for CXT */
+		// correct RINTCNT for CXT
 		if (fchip_azx->driver_caps & AZX_DCAPS_CTX_WORKAROUND){
 			fchip_writereg_w(fchip_azx, RINTCNT, 0xc0);
 		}
@@ -447,10 +447,9 @@ int fchip_init_streams(struct fchip_azx* fchip_azx)
 	int i;
 	int stream_tags[2] = { 0, 0 };
 
-	/* initialize each stream (aka device)
-	 * assign the starting bdl address to each stream (device)
-	 * and initialize
-	 */
+	// initialize each stream (aka device)
+	// assign the starting bdl address to each stream (device)
+	// and initialize
 	for (i = 0; i < fchip_azx->num_streams; i++) {
 		struct azx_dev *azx_dev = kzalloc(sizeof(*azx_dev), GFP_KERNEL);
 		int dir, tag;
@@ -460,12 +459,11 @@ int fchip_init_streams(struct fchip_azx* fchip_azx)
 		}
 
 		dir = stream_direction(fchip_azx, i);
-		/* stream tag must be unique throughout
-		 * the stream direction group,
-		 * valid values 1...15
-		 * use separate stream tag if the flag
-		 * AZX_DCAPS_SEPARATE_STREAM_TAG is used
-		 */
+		// stream tag must be unique throughout
+		// the stream direction group,
+		// valid values 1...15
+		// use separate stream tag if the flag
+		// AZX_DCAPS_SEPARATE_STREAM_TAG is used
 		if (fchip_azx->driver_caps & AZX_DCAPS_SEPARATE_STREAM_TAG){
 			tag = ++stream_tags[dir];
 		}
@@ -483,27 +481,25 @@ static void fchip_init_pci(struct fchip_azx* fchip_azx)
 {
 	int snoop_type = fchip_get_snoop_type(fchip_azx);
 
-	/* Clear bits 0-2 of PCI register TCSEL (at offset 0x44)
-	 * TCSEL == Traffic Class Select Register, which sets PCI express QOS
-	 * Ensuring these bits are 0 clears playback static on some HD Audio
-	 * codecs.
-	 * The PCI register TCSEL is defined in the Intel manuals.
-	 */
+	// Clear bits 0-2 of PCI register TCSEL (at offset 0x44)
+	// TCSEL == Traffic Class Select Register, which sets PCI express QOS
+	// Ensuring these bits are 0 clears playback static on some HD Audio
+	// codecs.
+	// The PCI register TCSEL is defined in the Intel manuals.
 	if (!(fchip_azx->driver_caps & AZX_DCAPS_NO_TCSEL)) {
 		printk(KERN_DEBUG "fchip: Clearing TCSEL\n");
 		update_pci_byte(fchip_azx->pci, AZX_PCIREG_TCSEL, 0x07, 0);
 	}
 
-	/* For ATI SB450/600/700/800/900 and AMD Hudson azalia HD audio,
-	 * we need to enable snoop.
-	 */
+	// For ATI SB450/600/700/800/900 and AMD Hudson azalia HD audio,
+	// we need to enable snoop.
 	if (snoop_type == AZX_SNOOP_TYPE_ATI) {
 		printk(KERN_DEBUG "fchip: Setting ATI snoop: %d\n", fchip_snoop(fchip_azx));
 		update_pci_byte(fchip_azx->pci,	ATI_SB450_HDAUDIO_MISC_CNTR2_ADDR, 0x07, 
 			fchip_snoop(fchip_azx) ? ATI_SB450_HDAUDIO_ENABLE_SNOOP : 0);
 	}
 
-	/* For NVIDIA HDA, enable snoop */
+	// For NVIDIA HDA, enable snoop
 	if (snoop_type == AZX_SNOOP_TYPE_NVIDIA) {
 		printk(KERN_DEBUG "fchip: Setting Nvidia snoop: %d\n", fchip_snoop(fchip_azx));
 		update_pci_byte(fchip_azx->pci,
@@ -517,7 +513,7 @@ static void fchip_init_pci(struct fchip_azx* fchip_azx)
 				0x01, NVIDIA_HDA_ENABLE_COHBIT);
 	}
 
-	/* Enable SCH/PCH snoop if needed */
+	// Enable SCH/PCH snoop if needed
 	if (snoop_type == AZX_SNOOP_TYPE_SCH) {
 		unsigned short snoop;
 		pci_read_config_word(fchip_azx->pci, INTEL_SCH_HDA_DEVC, &snoop);
@@ -538,15 +534,14 @@ static void fchip_init_pci(struct fchip_azx* fchip_azx)
     }
 }
 
-/*
- * ML_LCAP bits:
- *  bit 0: 6 MHz Supported
- *  bit 1: 12 MHz Supported
- *  bit 2: 24 MHz Supported
- *  bit 3: 48 MHz Supported
- *  bit 4: 96 MHz Supported
- *  bit 5: 192 MHz Supported
- */
+
+// ML_LCAP bits:
+//  bit 0: 6 MHz Supported
+//  bit 1: 12 MHz Supported
+//  bit 2: 24 MHz Supported
+//  bit 3: 48 MHz Supported
+//  bit 4: 96 MHz Supported
+//  bit 5: 192 MHz Supported 
 static int intel_get_lctl_scf(struct fchip_azx* fchip_azx)
 {
 	struct hdac_bus* bus = azx_to_hda_bus(fchip_azx);
@@ -601,35 +596,33 @@ static void intel_init_lctl(struct fchip_azx* fchip_azx)
 	u32 val;
 	int ret;
 
-	/* 0. check lctl register value is correct or not */
+	// 0. check lctl register value is correct or not
 	val = readl(bus->mlcap + AZX_ML_BASE + AZX_REG_ML_LCTL);
-	/* only perform additional configurations if the SCF is initially based on 6MHz */
+	// only perform additional configurations if the SCF is initially based on 6MHz
 	if ((val & AZX_ML_LCTL_SCF) != 0){
 		return;
 	}
 
-	/*
-	 * Before operating on SPA, CPA must match SPA.
-	 * Any deviation may result in undefined behavior.
-	 */
+	// Before operating on SPA, CPA must match SPA.
+	// Any deviation may result in undefined behavior.
 	if (((val & AZX_ML_LCTL_SPA) >> AZX_ML_LCTL_SPA_SHIFT) !=
 		((val & AZX_ML_LCTL_CPA) >> AZX_ML_LCTL_CPA_SHIFT)){
 		return;
 	}
 
-	/* 1. turn link down: set SPA to 0 and wait CPA to 0 */
+	// 1. turn link down: set SPA to 0 and wait CPA to 0
 	ret = intel_ml_lctl_set_power(fchip_azx, 0);
 	udelay(100);
 	if (ret)
 		goto set_spa;
 
-	/* 2. update SCF to select an audio clock different from 6MHz */
+	// 2. update SCF to select an audio clock different from 6MHz
 	val &= ~AZX_ML_LCTL_SCF;
 	val |= intel_get_lctl_scf(fchip_azx);
 	writel(val, bus->mlcap + AZX_ML_BASE + AZX_REG_ML_LCTL);
 
 set_spa:
-	/* 4. turn link up: set SPA to 1 and wait CPA to 1 */
+	// 4. turn link up: set SPA to 1 and wait CPA to 1
 	intel_ml_lctl_set_power(fchip_azx, 1);
 	udelay(100);
 }
@@ -665,7 +658,7 @@ static void fchip_hda_intel_init_chip(struct fchip_azx* fchip_azx, bool full_res
 
 	snd_hdac_set_codec_wakeup(bus, false);
 
-	/* reduce dma latency to avoid noise */
+	// reduce dma latency to avoid noise
 	if (HDA_CONTROLLER_IS_APL(pci)){
 		bxt_reduce_dma_latency(fchip_azx);
 	}
@@ -727,7 +720,7 @@ static int fchip_first_init(struct fchip_azx *chip)
 	unsigned int dma_bits = 64;
 
 #if BITS_PER_LONG != 64
-	/* Fix up base address on ULI M5461 */
+	// Fix up base address on ULI M5461
 	if (chip->driver_type == AZX_DRIVER_ULI) {
 		u16 tmp3;
 		pci_read_config_word(pci, 0x40, &tmp3);
@@ -738,7 +731,6 @@ static int fchip_first_init(struct fchip_azx *chip)
 
 	// Fix response write request not synced to memory when handle
 	// hdac interrupt on Glenfly Gpus
-	
 	if (chip->driver_type == AZX_DRIVER_GFHDMI)
 	{
 		bus->polling_mode = 1;
@@ -765,12 +757,10 @@ static int fchip_first_init(struct fchip_azx *chip)
 		snd_hdac_bus_parse_capabilities(bus);
 	}
 
-	/*
-	 * Some Intel CPUs has always running timer (ART) feature and
-	 * controller may have Global time sync reporting capability, so
-	 * check both of these before declaring synchronized time reporting
-	 * capability SNDRV_PCM_INFO_HAS_LINK_SYNCHRONIZED_ATIME
-	 */
+	// Some Intel CPUs has always running timer (ART) feature and
+	// controller may have Global time sync reporting capability, so
+	// check both of these before declaring synchronized time reporting
+	// capability SNDRV_PCM_INFO_HAS_LINK_SYNCHRONIZED_ATIME
 	chip->gts_present = false;
 
 #ifdef CONFIG_X86
@@ -797,12 +787,12 @@ static int fchip_first_init(struct fchip_azx *chip)
 	gcap = fchip_readreg_w(chip, GCAP);
 	printk(KERN_DEBUG "fchip: Chipset global capabilities = 0x%x\n", gcap);
 
-	/* AMD devices support 40 or 48bit DMA, take the safe one */
+	// AMD devices support 40 or 48bit DMA, take the safe one
 	if (chip->pci->vendor == PCI_VENDOR_ID_AMD){
 		dma_bits = 40;
 	}
 
-	/* disable SB600 64bit support for safety */
+	// disable SB600 64bit support for safety
 	if (chip->pci->vendor == PCI_VENDOR_ID_ATI) {
 		struct pci_dev *p_smbus;
 		dma_bits = 40;
@@ -819,17 +809,17 @@ static int fchip_first_init(struct fchip_azx *chip)
 		}
 	}
 
-	/* NVidia hardware normally only supports up to 40 bits of DMA */
+	// NVidia hardware normally only supports up to 40 bits of DMA
 	if (chip->pci->vendor == PCI_VENDOR_ID_NVIDIA)
 		dma_bits = 40;
 
-	/* disable 64bit DMA address on some devices */
+	// disable 64bit DMA address on some devices
 	if (chip->driver_caps & AZX_DCAPS_NO_64BIT) {
 		printk(KERN_DEBUG "fchip: Disabling 64bit DMA\n");
 		gcap &= ~AZX_GCAP_64OK;
 	}
 
-	/* disable buffer size rounding to 128-byte multiples if supported */
+	// disable buffer size rounding to 128-byte multiples if supported
 	if (align_buffer_size >= 0){
 		chip->align_buffer_size = !!align_buffer_size;
 	}
@@ -842,7 +832,7 @@ static int fchip_first_init(struct fchip_azx *chip)
 		}
 	}
 
-	/* allow 64bit DMA address if supported by H/W */
+	// allow 64bit DMA address if supported by H/W
 	if (!(gcap & AZX_GCAP_64OK))
 	{
 		dma_bits = 32;
@@ -909,17 +899,17 @@ static int fchip_first_init(struct fchip_azx *chip)
 	}
 		
 
-	/* initialize chip */
+	// initialize chip
 	fchip_init_pci(chip);
 
 	snd_hdac_i915_set_bclk(bus);
 
 	fchip_hda_intel_init_chip(chip, (probe_only[dev] & 2) == 0);
 
-	/* codec detection */
+	// codec detection
 	if (!azx_to_hda_bus(chip)->codec_mask) {
 		printk(KERN_ERR "no codecs found!\n");
-		/* keep running the rest for the runtime PM */
+		// keep running the rest for the runtime PM
 	}
 
 	if (fchip_acquire_irq(chip, 0) < 0){
@@ -953,7 +943,7 @@ static int fchip_position_check(struct fchip_azx* fchip_azx, struct azx_dev* azx
 		return ok;
 	} 
 	else if (ok == 0) {
-		/* bogus IRQ, process it later */
+		// bogus IRQ, process it later
 		azx_dev->irq_pending = 1;
 		schedule_work(&hda->irq_pending_work);
 	}
@@ -974,7 +964,6 @@ static int fchip_create(
     struct fchip** rchip
 )
 {
-    printk(KERN_DEBUG "fchip: Chip create called\n");
     static struct snd_device_ops ops = {
 		.dev_disconnect = fchip_dev_disconnect,
         .dev_free = fchip_dev_free,
@@ -1135,11 +1124,9 @@ int fchip_probe_continue(struct fchip_azx *fchip_azx)
 	to_hda_bus(bus)->bus_probing = 1;
 	hda->probe_continued = 1;
 
-	/* Request display power well for the HDA controller or codec. For
-	 * Haswell/Broadwell, both the display HDA controller and codec need
-	 * this power. For other platforms, like Baytrail/Braswell, only the
-	 * display codec needs the power and it can be released after probe.
-	 */
+
+	// This function is used by either HD-audio controller or codec driver that
+ 	// needs the interaction with graphics driver. it also toggles the codec wakeup
 	fchip_display_power(fchip_azx, true);
 
 	err = fchip_first_init(fchip_azx);
@@ -1271,7 +1258,7 @@ static int fchip_probe
 	pci_set_drvdata(pci, card);
 
 #ifdef CONFIG_SND_HDA_I915
-	/* bind with i915 if needed */
+	// bind with i915 if needed
 	if (fchip_azx->driver_caps & AZX_DCAPS_I915_COMPONENT) {
 		err = snd_hdac_i915_init(azx_to_hda_bus(fchip_azx));
 		if (err < 0) {
@@ -1281,11 +1268,10 @@ static int fchip_probe
         		return err;
 			}
 
-			/* if the controller is bound only with HDMI/DP
-			 * (for HSW and BDW), we need to abort the probe;
-			 * for other chips, still continue probing as other
-			 * codecs can be on the same link.
-			 */
+			// if the controller is bound only with HDMI/DP
+			// (for HSW and BDW), we need to abort the probe;
+			// for other chips, still continue probing as other
+			// codecs can be on the same link.
 			if (HDA_CONTROLLER_IN_GPU(pci)) {
 				printk(KERN_ERR "fchip: HSW/BDW HD-audio HDMI/DP requires binding with gfx driver\n");
 
@@ -1294,12 +1280,12 @@ static int fchip_probe
         		return err;
 			} 
 			else {
-				/* don't bother any longer */
+				// don't bother any longer
 				fchip_azx->driver_caps &= ~AZX_DCAPS_I915_COMPONENT;
 			}
 		}
 
-		/* HSW/BDW controllers need this power */
+		// HSW/BDW controllers need this power
 		if (HDA_CONTROLLER_IN_GPU(pci)){
 			hda->need_i915_power = true;
 		}
@@ -1311,7 +1297,6 @@ static int fchip_probe
 	}
 #endif // CONFIG_SND_HDA_I915
 
-	// not sure if the vga is required here, but:
 	err = fchip_register_vga_switcheroo(fchip_azx);
 	if (err < 0) {
 		printk(KERN_ERR "fchip: Error registering vga_switcheroo client\n");
@@ -1341,7 +1326,7 @@ static int fchip_probe
 			snd_card_free(card);
 			return err;
 		}
-		schedule_probe = false; /* continued in azx_firmware_cb() */
+		schedule_probe = false; // continued in azx_firmware_cb()
 	}
 #endif // CONFIG_SND_HDA_PATCH_LOADER
 
@@ -1355,36 +1340,7 @@ static int fchip_probe
 	}
 	return 0;
 
-
-	
-    // err = snd_filterchip_new_pcm(chip);
-    // if(err<0){
-    //     snd_card_free(card);
-    //     return err;
-    // }
-
-    // strcpy(card->driver, FCHIP_DRIVER_NAME);
-    // strcpy(card->shortname, FCHIP_DRIVER_SHORTNAME);
-    // sprintf(card->longname, "%s at 0x%lx irq %i", card->shortname, chip->port, chip->irq);
-
-    // // todo later (PCM goes here?)
-
-    // err = snd_card_register(card);
-    // if(err<0){
-    //     snd_card_free(card);
-    //     return err;
-    // }
-
-    // // we do it, so that later we can free the chip, 
-    // // as only pci_dev struct is passed to the dtor.
-    // // that way, we're able to free the card by acquiring
-    // // it from the drvdata of the pci_dev struct
-    // pci_set_drvdata(pci, card);
-    // dev++;
-    // return 0;
 }
-
-
 
 
 /* PCI IDs */

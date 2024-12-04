@@ -5,7 +5,7 @@ static unsigned int fchip_command_addr(u32 cmd)
 {
 	unsigned int addr = cmd >> 28;
 
-	if (addr >= AZX_MAX_CODECS) {
+	if (addr >= FCHIP_AZX_MAX_CODECS) {
 		snd_BUG();
 		addr = 0;
 	}
@@ -19,9 +19,9 @@ static int fchip_single_wait_for_response(struct fchip_azx *fchip_azx, unsigned 
 	int timeout = 50;
 
 	while (timeout--) {
-		/* check IRV busy bit */
+		// check IRV (immediate result valid) bit
 		if (fchip_readreg_w(fchip_azx, IRS) & AZX_IRS_VALID) {
-			/* reuse rirb.res as the response return value */
+			// reuse rirb.res as the response return value
 			azx_to_hda_bus(fchip_azx)->rirb.res[addr] = fchip_readreg_l(fchip_azx, IR);
 			return 0;
 		}
@@ -43,9 +43,9 @@ static int fchip_single_send_cmd(struct hdac_bus *bus, u32 val)
 
 	bus->last_cmd[fchip_command_addr(val)] = val;
 	while (timeout--) {
-		/* check ICB busy bit */
+		// check ICB (immediate command busy) bit, see p.52
 		if (!((fchip_readreg_w(fchip_azx, IRS) & AZX_IRS_BUSY))) {
-			/* Clear IRV valid bit */
+			// Clear IRV valid bit
 			fchip_writereg_w(fchip_azx, IRS, fchip_readreg_w(fchip_azx, IRS) |
 				   AZX_IRS_VALID);
 			fchip_writereg_l(fchip_azx, IC, val);
@@ -125,20 +125,19 @@ static int fchip_rirb_get_response(struct hdac_bus *bus, unsigned int addr,
 	}
 
 	if (fchip_azx->probing) {
-		/* If this critical timeout happens during the codec probing
-		 * phase, this is likely an access to a non-existing codec
-		 * slot.  Better to return an error and reset the system.
-		 */
+		// If this critical timeout happens during the codec probing
+		// phase, this is likely an access to a non-existing codec
+		// slot.  Better to return an error and reset the system.
 		return -EIO;
 	}
 
-	/* no fallback mechanism? */
-	if (!fchip_azx->fallback_to_single_cmd)
+	// no fallback mechanism?
+	if (!fchip_azx->fallback_to_single_cmd){
 		return -EIO;
+	}
 
-	/* a fatal communication error; need either to reset or to fallback
-	 * to the single_cmd mode
-	 */
+	// a fatal communication error; need either to reset or to fallback
+	// to the single_cmd mode
 	if (hbus->allow_bus_reset && !hbus->response_reset && !hbus->in_reset) {
 		hbus->response_reset = 1;
 		printk(KERN_ERR "fchip: No response from codec, resetting bus: last cmd=0x%08x\n",
@@ -207,11 +206,12 @@ int fchip_bus_init(struct fchip_azx* fchip_azx, const char* model)
 		bus->core.align_bdle_4k = true;
     }
 
+// PIO - programmable I/O. see immediate c/i registers p.50
 	if (fchip_azx->driver_caps & AZX_DCAPS_PIO_COMMANDS){
 		bus->core.use_pio_for_commands = true;
     }
 
-	/* enable sync_write flag for stable communication as default */
+	// enable sync_write flag for stable communication as default
 	bus->core.sync_write = 1;
 
 	return 0;

@@ -38,21 +38,21 @@ static unsigned int fchip_via_get_position(struct fchip_azx *chip,
 
 	link_pos = snd_hdac_stream_get_pos_lpib(azx_dev_to_hdac_stream(azx_dev));
 	if (azx_dev->core.substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		/* Playback, no problem using link position */
+		// Playback, no problem using link position
 		return link_pos;
 	}
 
-	/* Capture */
-	/* For new chipset,
-	 * use mod to get the DMA position just like old chipset
-	 */
+	// Capture 
+	// For new chipset,
+	// use mod to get the DMA position just like old chipset
+	// 
 	mod_dma_pos = le32_to_cpu(*azx_dev->core.posbuf);
 	mod_dma_pos %= azx_dev->core.period_bytes;
 
 	fifo_size = azx_dev_to_hdac_stream(azx_dev)->fifo_size;
 
 	if (azx_dev->insufficient) {
-		/* Link position never gather than FIFO size */
+		// Link position never gather than FIFO size 
 		if (link_pos <= fifo_size){
 			return 0;
         }
@@ -67,7 +67,7 @@ static unsigned int fchip_via_get_position(struct fchip_azx *chip,
 		mini_pos = link_pos - fifo_size;    
     }
 
-	/* Find nearest previous boudary */
+	// Find nearest previous boudary
 	mod_mini_pos = mini_pos % azx_dev->core.period_bytes;
 	mod_link_pos = link_pos % azx_dev->core.period_bytes;
 	if (mod_link_pos >= fifo_size){
@@ -83,7 +83,7 @@ static unsigned int fchip_via_get_position(struct fchip_azx *chip,
         }
 	}
 
-	/* Calculate real DMA position we want */
+	// Calculate real DMA position we want
 	return bound_pos + mod_dma_pos;
 }
 
@@ -109,7 +109,7 @@ static unsigned int fchip_get_pos_fifo(struct fchip_azx *chip, struct azx_dev *a
 		}
 	}
 
-	/* correct the DMA position for capture stream */
+	// correct the DMA position for capture stream
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		if (pos < delay){
 			pos += azx_dev->core.bufsize;
@@ -125,7 +125,7 @@ static int fchip_get_delay_from_fifo(struct fchip_azx *chip, struct azx_dev *azx
 {
 	struct snd_pcm_substream *substream = azx_dev->core.substream;
 
-	/* just read back the calculated value in the above */
+	// just read back the calculated value in the above 
 	return substream->runtime->delay;
 }
 
@@ -177,7 +177,7 @@ void assign_position_fix(struct fchip_azx *chip, int fix)
 
 	chip->get_position[0] = chip->get_position[1] = callbacks[fix];
 
-	/* combo mode uses LPIB only for playback */
+	// combo mode uses LPIB only for playback
 	if (fix == POS_FIX_COMBO){
 		chip->get_position[1] = NULL;
     }
@@ -216,7 +216,7 @@ int check_position_fix(struct fchip_azx *chip, int fix)
 		return q->value;
 	}
 
-	/* Check VIA/ATI HD Audio Controller exist */
+	// Check VIA/ATI HD Audio Controller exist
 	if (chip->driver_type == AZX_DRIVER_VIA) {
 		printk(KERN_DEBUG "fchip: Using VIACOMBO position fix\n");
 		return POS_FIX_VIACOMBO;
@@ -256,23 +256,21 @@ int fchip_position_ok(struct fchip_azx* fchip_azx, struct azx_dev* azx_dev)
 	unsigned int pos;
 	snd_pcm_uframes_t hwptr, target;
 
-	/*
-	 * The value of the WALLCLK register is always 0
-	 * on the Loongson controller, so we return directly.
-	 */
+	// The value of the WALLCLK register is always 0
+	// on the Loongson controller, so we return directly. 
 	if (fchip_azx->driver_type == AZX_DRIVER_LOONGSON){
 		return 1;
 	}
 
 	wallclk = fchip_readreg_l(fchip_azx, WALLCLK) - azx_dev->core.start_wallclk;
 	if (wallclk < (azx_dev->core.period_wallclk * 2) / 3){
-		return -1;	/* bogus (too early) interrupt */
+		return -1;	// bogus (too early) interrupt
 	}
 
 	if (fchip_azx->get_position[stream]){
 		pos = fchip_azx->get_position[stream](fchip_azx, azx_dev);
 	}
-	else { /* use the position buffer as default */
+	else { // use the position buffer as default
 		pos = fchip_get_pos_posbuf(fchip_azx, azx_dev);
 		if (!pos || pos == (u32)-1) {
 			printk(KERN_INFO "fchip: Invalid position buffer, using LPIB read method instead.\n");
@@ -301,24 +299,24 @@ int fchip_position_ok(struct fchip_azx* fchip_azx, struct azx_dev* azx_dev)
 
 	if (WARN_ONCE(!azx_dev->core.period_bytes,
 		      "hda-intel: zero azx_dev->period_bytes"))
-		return -1; /* this shouldn't happen! */
+		return -1; // this shouldn't happen!
 	if (wallclk < (azx_dev->core.period_wallclk * 5) / 4 &&
 	    pos % azx_dev->core.period_bytes > azx_dev->core.period_bytes / 2)
 	{
-		/* NG - it's below the first next period boundary */
+		// NG - it's below the first next period boundary
 		return fchip_azx->bdl_pos_adj ? 0 : -1;
 	}
 	azx_dev->core.start_wallclk += wallclk;
 
 	if (azx_dev->core.no_period_wakeup){
-		return 1; /* OK, no need to check period boundary */
+		return 1; // OK, no need to check period boundary
 	}
 
 	if (runtime->hw_ptr_base != runtime->hw_ptr_interrupt){
-		return 1; /* OK, already in hwptr updating process */
+		return 1; // OK, already in hwptr updating process
 	}
 
-	/* check whether the period gets really elapsed */
+	// check whether the period gets really elapsed
 	pos = bytes_to_frames(runtime, pos);
 	hwptr = runtime->hw_ptr_base + pos;
 	
@@ -328,9 +326,9 @@ int fchip_position_ok(struct fchip_azx* fchip_azx, struct azx_dev* azx_dev)
 
 	target = runtime->hw_ptr_interrupt + runtime->period_size;
 	if (hwptr < target) {
-		/* too early wakeup, process it later */
+		// too early wakeup, process it later
 		return fchip_azx->bdl_pos_adj ? 0 : -1;
 	}
 
-	return 1; /* OK, it's fine */
+	return 1; // OK, it's fine
 }

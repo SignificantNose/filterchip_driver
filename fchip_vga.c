@@ -4,7 +4,7 @@
 #ifdef SUPPORT_VGA_SWITCHEROO
 
 #ifdef CONFIG_ACPI
-/* ATPX is in the integrated GPU's namespace */
+// ATPX is in the integrated GPU's namespace
 static bool atpx_present(void)
 {
 	struct pci_dev *pdev = NULL;
@@ -36,7 +36,7 @@ struct pci_dev* get_bound_vga(struct pci_dev *pci)
 {
 	struct pci_dev *p;
 
-	/* check only discrete GPU */
+	// check only discrete GPU
 	switch (pci->vendor) {
 	case PCI_VENDOR_ID_ATI:
 	case PCI_VENDOR_ID_AMD:
@@ -44,11 +44,10 @@ struct pci_dev* get_bound_vga(struct pci_dev *pci)
 			p = pci_get_domain_bus_and_slot(pci_domain_nr(pci->bus),
 							pci->bus->number, 0);
 			if (p) {
-				/* ATPX is in the integrated GPU's ACPI namespace
-				 * rather than the dGPU's namespace. However,
-				 * the dGPU is the one who is involved in
-				 * vgaswitcheroo.
-				 */
+				// ATPX is in the integrated GPU's ACPI namespace
+				// rather than the dGPU's namespace. However,
+				// the dGPU is the one who is involved in
+				// vgaswitcheroo.
 				if (((p->class >> 16) == PCI_BASE_CLASS_DISPLAY) &&
 				    (atpx_present() || apple_gmux_detect(NULL, NULL)))
 					return p;
@@ -95,9 +94,8 @@ void fchip_init_vga_switcheroo(struct fchip_azx *chip)
 		printk(KERN_INFO "fchip: Handle vga_switcheroo audio client\n");
 		hda->use_vga_switcheroo = 1;
 
-		/* cleared in either gpu_bound op or codec probe, or when its
-		 * upstream port has _PR3 (i.e. dGPU).
-		 */
+		// cleared in either gpu_bound op or codec probe, or when its
+		// upstream port has _PR3 (i.e. dGPU).
 		parent = pci_upstream_bridge(p);
 		chip->bus.keep_power = parent ? !pci_pr3_present(parent) : 1;
 		chip->driver_caps |= AZX_DCAPS_PM_RUNTIME;
@@ -113,7 +111,7 @@ void fchip_setup_vga_switcheroo_runtime_pm(struct fchip_azx *fchip_azx)
 		list_for_each_codec(codec, &fchip_azx->bus){
 			codec->auto_runtime_pm = 1;
 		}
-		/* reset the power save setup */
+		// reset the power save setup
 		if (fchip_azx->running){
 			fchip_set_default_power_save(fchip_azx);
 		}
