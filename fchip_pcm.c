@@ -155,32 +155,32 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct fchip_runtime_pr *runtime_pr = runtime->private_data;
 
-	snd_pcm_uframes_t sw_ptr = runtime->control->appl_ptr % runtime->buffer_size;
-	snd_pcm_uframes_t filter_ptr = runtime_pr->filter_ptr % runtime->buffer_size;
-	unsigned char *dma_area = runtime->dma_area;
+	snd_pcm_uframes_t sw_ptr;
+	snd_pcm_uframes_t filter_ptr;
+	unsigned char *dma_area;
 	unsigned int buffer_size;
 	ssize_t frame_in_bytes;
 	snd_pcm_uframes_t res;
 
-	
-	res = bytes_to_frames(runtime, fchip_pcm_get_position(chip, runtime_pr->dev));
 	buffer_size = runtime->buffer_size;
 	frame_in_bytes = runtime->frame_bits / 8;
 
-	sw_ptr = runtime->control->appl_ptr % runtime->buffer_size;
-	filter_ptr = runtime_pr->filter_ptr % runtime->buffer_size;
+	sw_ptr = runtime->control->appl_ptr % buffer_size;
+	filter_ptr = runtime_pr->filter_ptr % buffer_size;
 	dma_area = runtime->dma_area;
 
+	res = bytes_to_frames(runtime, fchip_pcm_get_position(chip, runtime_pr->dev));
+
 	if (filter_ptr != sw_ptr) {
-        if (filter_ptr < sw_ptr) {
+		if (filter_ptr < sw_ptr) {
 			fchip_filter_process_region(sw_ptr-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
 		} 
 		else {
 			fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
-			fchip_filter_process_region(sw_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
-        }
-        runtime_pr->filter_ptr = sw_ptr;
-    }
+			fchip_filter_process_region(sw_ptr, dma_area, runtime_pr);
+		}
+		runtime_pr->filter_ptr = sw_ptr;
+	}
 
 	return res;
 }
