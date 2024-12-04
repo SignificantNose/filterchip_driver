@@ -171,15 +171,29 @@ snd_pcm_uframes_t fchip_pcm_pointer(struct snd_pcm_substream *substream)
 
 	res = bytes_to_frames(runtime, fchip_pcm_get_position(chip, runtime_pr->dev));
 
-	if (filter_ptr != sw_ptr) {
-		if (filter_ptr < sw_ptr) {
-			fchip_filter_process_region(sw_ptr-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
-		} 
-		else {
-			fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
-			fchip_filter_process_region(sw_ptr, dma_area, runtime_pr);
+	if(substream->stream == SNDRV_PCM_STREAM_PLAYBACK){
+		if (filter_ptr != sw_ptr) {
+			if (filter_ptr < sw_ptr) {
+				fchip_filter_process_region(sw_ptr-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
+			} 
+			else {
+				fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
+				fchip_filter_process_region(sw_ptr, dma_area, runtime_pr);
+			}
+			runtime_pr->filter_ptr = sw_ptr;
 		}
-		runtime_pr->filter_ptr = sw_ptr;
+	}
+	else{
+		if(filter_ptr != res){
+			if(filter_ptr < res){
+				fchip_filter_process_region(res-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
+			}
+			else{
+				fchip_filter_process_region(buffer_size-filter_ptr, dma_area+filter_ptr*frame_in_bytes, runtime_pr);
+				fchip_filter_process_region(res, dma_area, runtime_pr);
+			}
+			runtime_pr->filter_ptr = sw_ptr;
+		}
 	}
 
 	return res;
