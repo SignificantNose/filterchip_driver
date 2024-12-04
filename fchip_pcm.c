@@ -58,35 +58,7 @@ static const struct snd_pcm_hardware fchip_pcm_hw = {
 	.fifo_size =		0,
 };
 
-// static struct snd_pcm_hardware snd_filterchip_playback_hw = {
-//     .info = (SNDRV_PCM_INFO_MMAP |
-//                 SNDRV_PCM_INFO_INTERLEAVED |
-//                 SNDRV_PCM_INFO_BLOCK_TRANSFER |
-//                 SNDRV_PCM_INFO_MMAP_VALID),
-//                 /*
-// 				  SNDRV_PCM_INFO_RESUME | // not fully implemented?
-// 				 SNDRV_PCM_INFO_PAUSE |
-// 				 SNDRV_PCM_INFO_SYNC_START |
-// 				 SNDRV_PCM_INFO_HAS_WALL_CLOCK | // legacy
-// 				 SNDRV_PCM_INFO_HAS_LINK_ATIME |
-// 				 SNDRV_PCM_INFO_NO_PERIOD_WAKEUP),
-//                  */
-//     .formats =          SNDRV_PCM_FMTBIT_S16_LE,
-//     .rates =            SNDRV_PCM_RATE_48000,
-//     .rate_min =         48000,
-//     .rate_max =         48000,
-//     .channels_min =     2,
-//     .channels_max =     2,
-//     .buffer_bytes_max = 32768,  // 4*1024*1024
-//     .period_bytes_min = 4096,   // 128
-//     .period_bytes_max = 32768,  // 2*1024*1024
-//     .periods_min =      1,      // 2
-//     .periods_max =      1024,   // 32 in hda_controller
-// }; 
-
-
-static inline struct hda_pcm_stream *
-to_hda_pcm_stream(struct snd_pcm_substream *substream)
+static inline struct hda_pcm_stream *to_hda_pcm_stream(struct snd_pcm_substream *substream)
 {
 	struct azx_pcm *apcm = snd_pcm_substream_chip(substream);
 	return &apcm->info->stream[substream->stream];
@@ -123,7 +95,7 @@ static unsigned int fchip_pcm_get_position(struct fchip_azx *chip,
 
 	if (chip->get_position[stream])
 		pos = chip->get_position[stream](chip, azx_dev);
-	else /* use the position buffer as default */
+	else // use the position buffer as default
 		pos = fchip_get_pos_posbuf(chip, azx_dev);
 
 	if (pos >= azx_dev->core.bufsize)
@@ -141,11 +113,10 @@ static unsigned int fchip_pcm_get_position(struct fchip_azx *chip,
 		substream->runtime->delay = delay;
 	}
 
-	// trace_azx_get_position(chip, azx_dev, pos, delay);
 	return pos;
 }
 
-inline void fchip_filter_process_region(snd_pcm_uframes_t total_frames, void *data_ptr, struct fchip_runtime_pr *pr){
+static inline void fchip_filter_process_region(snd_pcm_uframes_t total_frames, void *data_ptr, struct fchip_runtime_pr *pr){
 	int channels = pr->filter_channels;
 	int32_t *casted_data_ptr = (int32_t*)data_ptr; 
 	struct fchip_channel_filter *filters = pr->filters;
@@ -238,11 +209,6 @@ static struct fchip_runtime_pr *fchip_runtime_private_init(struct azx_dev *azx_d
 	return runtime_pr;
 }
 
-static void fchip_runtime_private_free(struct fchip_runtime_pr *runtime_pr){
-	kfree(runtime_pr->filters);
-	kfree(runtime_pr);
-}
-
 int fchip_pcm_open(struct snd_pcm_substream *substream)
 {
 	struct azx_pcm *apcm = snd_pcm_substream_chip(substream);
@@ -284,25 +250,25 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 	snd_pcm_limit_hw_rates(runtime);
 	snd_pcm_hw_constraint_integer(runtime, SNDRV_PCM_HW_PARAM_PERIODS);
 
-	/* avoid wrap-around with wall-clock */
+	// avoid wrap-around with wall-clock
 	snd_pcm_hw_constraint_minmax(runtime, SNDRV_PCM_HW_PARAM_BUFFER_TIME,
 				     20,
 				     178000000);
 
 	if (fchip_azx->align_buffer_size){
-		/* constrain buffer sizes to be multiple of 128
-		   bytes. This is more efficient in terms of memory
-		   access but isn't required by the HDA spec and
-		   prevents users from specifying exact period/buffer
-		   sizes. For example for 44.1kHz, a period size set
-		   to 20ms will be rounded to 19.59ms. */
+		// constrain buffer sizes to be multiple of 128
+		// bytes. This is more efficient in terms of memory
+		// access but isn't required by the HDA spec and
+		// prevents users from specifying exact period/buffer
+		// sizes. For example for 44.1kHz, a period size set
+		// to 20ms will be rounded to 19.59ms.
 		buff_step = 128;
     }
 	else{
-		/* Don't enforce steps on buffer sizes, still need to
-		   be multiple of 4 bytes (HDA spec). Tested on Intel
-		   HDA controllers, may not work on all devices where
-		   option needs to be disabled */
+		// Don't enforce steps on buffer sizes, still need to
+		// be multiple of 4 bytes (HDA spec). Tested on Intel
+		// HDA controllers, may not work on all devices where
+		// option needs to be disabled 
 		buff_step = 4;
     }
 
@@ -320,7 +286,7 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 		goto powerdown;
 	}
 	snd_pcm_limit_hw_rates(runtime);
-	/* sanity check */
+	// sanity check
 	if (snd_BUG_ON(!runtime->hw.channels_min) ||
 	    snd_BUG_ON(!runtime->hw.channels_max) ||
 	    snd_BUG_ON(!runtime->hw.formats) ||
@@ -334,10 +300,10 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 		goto powerdown;
 	}
 
-	/* disable LINK_ATIME timestamps for capture streams
-	   until we figure out how to handle digital inputs */
+	// disable LINK_ATIME timestamps for capture streams
+	// until we figure out how to handle digital inputs 
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
-		runtime->hw.info &= ~SNDRV_PCM_INFO_HAS_WALL_CLOCK; /* legacy */
+		runtime->hw.info &= ~SNDRV_PCM_INFO_HAS_WALL_CLOCK; // legacy
 		runtime->hw.info &= ~SNDRV_PCM_INFO_HAS_LINK_ATIME;
 	}
 
@@ -351,6 +317,12 @@ int fchip_pcm_open(struct snd_pcm_substream *substream)
 	mutex_unlock(&fchip_azx->open_mutex);
 	snd_hda_codec_pcm_put(apcm->info);
 	return err;
+}
+
+
+static void fchip_runtime_private_free(struct fchip_runtime_pr *runtime_pr){
+	kfree(runtime_pr->filters);
+	kfree(runtime_pr);
 }
 
 int fchip_pcm_close(struct snd_pcm_substream *substream)
@@ -392,15 +364,16 @@ int fchip_pcm_hw_params(struct snd_pcm_substream *substream, struct snd_pcm_hw_p
 		goto unlock;
 	}
 
-	/* Set up BDLEs here, return -ENOMEM if too many BDLEs are required */
+	// Set up BDLEs here, return -ENOMEM if too many BDLEs are required
 	hdas->bufsize = params_buffer_bytes(hw_params);
 	hdas->period_bytes = params_period_bytes(hw_params);
 	hdas->format_val = 0;
 	hdas->no_period_wakeup =
 		(hw_params->info & SNDRV_PCM_INFO_NO_PERIOD_WAKEUP) &&
 		(hw_params->flags & SNDRV_PCM_HW_PARAMS_NO_PERIOD_WAKEUP);
-	if (snd_hdac_stream_setup_periods(hdas) < 0)
+	if (snd_hdac_stream_setup_periods(hdas) < 0){
 		ret = -ENOMEM;
+	}
 
 unlock:
 	dsp_unlock(azx_dev);
@@ -414,7 +387,7 @@ int fchip_pcm_hw_free(struct snd_pcm_substream *substream)
 	struct azx_dev *azx_dev = fchip_get_azx_dev(substream);
 	struct hda_pcm_stream *hinfo = to_hda_pcm_stream(substream);
 
-	/* reset BDL address */
+	// reset BDL address
 	dsp_lock(azx_dev);
 	if (!dsp_is_locked(azx_dev))
 		snd_hdac_stream_cleanup(azx_dev_to_hdac_stream(azx_dev));
@@ -448,8 +421,7 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 	struct fchip_runtime_pr *runtime_pr = runtime->private_data;
 	unsigned int format_val, stream_tag, bits;
 	int err;
-	struct hda_spdif_out *spdif =
-		snd_hda_spdif_out_of_nid(apcm->codec, hinfo->nid);
+	struct hda_spdif_out *spdif = snd_hda_spdif_out_of_nid(apcm->codec, hinfo->nid);
 	unsigned short ctls = spdif ? spdif->ctls : 0;
 
 	dsp_lock(azx_dev);
@@ -479,7 +451,7 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 	snd_hdac_stream_setup(azx_dev_to_hdac_stream(azx_dev), false);
 
 	stream_tag = azx_dev->core.stream_tag;
-	/* CA-IBG chips need the playback stream starting from 1 */
+	// CA-IBG chips need the playback stream starting from 1
 	if ((fchip_azx->driver_caps & AZX_DCAPS_CTX_WORKAROUND) &&
 	    stream_tag > fchip_azx->capture_streams)
 		stream_tag -= fchip_azx->capture_streams;
@@ -487,8 +459,9 @@ int fchip_pcm_prepare(struct snd_pcm_substream *substream)
 				     azx_dev->core.format_val, substream);
 
  unlock:
-	if (!err)
+	if (!err){
 		azx_dev_to_hdac_stream(azx_dev)->prepared = 1;
+	}
 	dsp_unlock(azx_dev);
 	return err;
 }
@@ -542,7 +515,7 @@ int fchip_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 
 	spin_lock(&bus->reg_lock);
 
-	/* first, set SYNC bits of corresponding streams */
+	// first, set SYNC bits of corresponding streams
 	snd_hdac_stream_sync_trigger(hstr, true, sbits, sync_reg);
 
 	snd_pcm_group_for_each_entry(s, substream) {
@@ -561,7 +534,7 @@ int fchip_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	snd_hdac_stream_sync(hstr, start, sbits);
 
 	spin_lock(&bus->reg_lock);
-	/* reset SYNC bits */
+	// reset SYNC bits
 	snd_hdac_stream_sync_trigger(hstr, false, sbits, sync_reg);
 	if (start)
 		snd_hdac_stream_timecounter_init(hstr, sbits);
@@ -608,14 +581,14 @@ static int fchip_get_sync_time(ktime_t *device, struct system_counterval_t *syst
 	else
 		direction = 0;
 
-	/* 0th stream tag is not used, so DMA ch 0 is for 1st stream tag */
+	// 0th stream tag is not used, so DMA ch 0 is for 1st stream tag
 	do {
 		timeout = 100;
 		dma_select = (direction << GTSCC_CDMAS_DMA_DIR_SHIFT) |
 					(azx_dev->core.stream_tag - 1);
 		snd_hdac_chip_writel(azx_to_hda_bus(fchip_azx), GTSCC, dma_select);
 
-		/* Enable the capture */
+		// Enable the capture
 		snd_hdac_chip_updatel(azx_to_hda_bus(fchip_azx), GTSCC, 0, GTSCC_TSCCI_MASK);
 
 		while (timeout) {
@@ -631,18 +604,18 @@ static int fchip_get_sync_time(ktime_t *device, struct system_counterval_t *syst
 			return -EIO;
 		}
 
-		/* Read wall clock counter */
+		// Read wall clock counter
 		wallclk_ctr = snd_hdac_chip_readl(azx_to_hda_bus(fchip_azx), WALFCC);
 
-		/* Read TSC counter */
+		// Read TSC counter
 		tsc_counter_l = snd_hdac_chip_readl(azx_to_hda_bus(fchip_azx), TSCCL);
 		tsc_counter_h = snd_hdac_chip_readl(azx_to_hda_bus(fchip_azx), TSCCU);
 
-		/* Read Link counter */
+		// Read Link counter
 		ll_counter_l = snd_hdac_chip_readl(azx_to_hda_bus(fchip_azx), LLPCL);
 		ll_counter_h = snd_hdac_chip_readl(azx_to_hda_bus(fchip_azx), LLPCU);
 
-		/* Ack: registers read done */
+		// Ack: registers read done
 		snd_hdac_chip_writel(azx_to_hda_bus(fchip_azx), GTSCC, GTSCC_TSCCD_SHIFT);
 
 		tsc_counter = (tsc_counter_h << TSCCU_CCU_SHIFT) |
@@ -651,21 +624,17 @@ static int fchip_get_sync_time(ktime_t *device, struct system_counterval_t *syst
 		ll_counter = (ll_counter_h << LLPC_CCU_SHIFT) |	ll_counter_l;
 		wallclk_cycles = wallclk_ctr & WALFCC_CIF_MASK;
 
-		/*
-		 * An error occurs near frame "rollover". The clocks in
-		 * frame value indicates whether this error may have
-		 * occurred. Here we use the value of 10 i.e.,
-		 * HDA_MAX_CYCLE_OFFSET
-		 */
+		// An error occurs near frame "rollover". The clocks in
+		// frame value indicates whether this error may have
+		// occurred. Here we use the value of 10 i.e.,
+		// HDA_MAX_CYCLE_OFFSET
 		if (wallclk_cycles < HDA_MAX_CYCLE_VALUE - HDA_MAX_CYCLE_OFFSET
 					&& wallclk_cycles > HDA_MAX_CYCLE_OFFSET)
 			break;
 
-		/*
-		 * Sleep before we read again, else we may again get
-		 * value near to MAX_CYCLE. Try to sleep for different
-		 * amount of time so we dont hit the same number again
-		 */
+		// Sleep before we read again, else we may again get
+		// value near to MAX_CYCLE. Try to sleep for different
+		// amount of time so we dont hit the same number again
 		udelay(retry_count++);
 
 	} while (retry_count != HDA_MAX_CYCLE_READ_RETRY);
@@ -755,8 +724,8 @@ int fchip_pcm_get_time_info(struct snd_pcm_substream *substream,
 		*audio_ts = ns_to_timespec64(nsec);
 
 		audio_tstamp_report->actual_type = SNDRV_PCM_AUDIO_TSTAMP_TYPE_LINK;
-		audio_tstamp_report->accuracy_report = 1; /* rest of structure is valid */
-		audio_tstamp_report->accuracy = 42; /* 24 MHz WallClock == 42ns resolution */
+		audio_tstamp_report->accuracy_report = 1; // rest of structure is valid
+		audio_tstamp_report->accuracy = 42; // 24 MHz WallClock == 42ns resolution
 
 	} else if (is_link_time_supported(runtime, audio_tstamp_config)) {
 
@@ -783,7 +752,7 @@ int fchip_pcm_get_time_info(struct snd_pcm_substream *substream,
 		audio_tstamp_report->actual_type =
 			SNDRV_PCM_AUDIO_TSTAMP_TYPE_LINK_SYNCHRONIZED;
 		audio_tstamp_report->accuracy_report = 1;
-		/* 24 MHz WallClock == 42ns resolution */
+		// 24 MHz WallClock == 42ns resolution
 		audio_tstamp_report->accuracy = 42;
 
 	} else {
